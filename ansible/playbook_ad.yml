@@ -1,0 +1,62 @@
+---
+- name: Instalacja i konfiguracja Samba4 AD DC
+  hosts: ad
+  become: yes
+  vars:
+    domain_realm: "ls.ege.ds"
+    domain_netbios: "LS"
+    vault_admin_pass: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          38336337623534323336643765333039663134306663373663313961323935663836643832643038
+          3235356565643665666534343330376661383666386236640a376166356666633231613733353864
+          32386334373866623538633463613938663465346538643034316231356430666465373561313365
+          3363356632343333390a383239346138396164393462663561326532323338343462353762386138
+          3463
+
+  tasks:
+    - name: Aktualizacja apt i instalacja wymaganych pakietow
+      apt:
+        name:
+          - samba
+          - smbclient
+          - winbind
+          - libnss-winbind
+          - krb5-user
+          - krb5-config
+        state: present
+        update_cache: yes
+
+    - name: Usuniecie domyslnego pliku smb.conf (aby AD moglo wygenerowac wlasny)
+      file:
+        path: /etc/samba/smb.conf
+        state: absent
+
+    - name: Provisionowanie (Tworzenie) nowej domeny Active Directory
+      shell: >
+        samba-tool domain provision 
+        --server-role=dc 
+        --use-rfc2307 
+        --dns-backend=SAMBA_INTERNAL 
+        --realm={{ domain_realm | upper }} 
+        --domain={{ domain_netbios }} 
+        --adminpass='{{ admin_pass }}'
+      args:
+        creates: /etc/samba/smb.conf
+
+    - name: Wylaczenie standardowych uslug Samba (konfliktuja z wersja AD DC)
+      systemd:
+        name: "{{ item }}"
+        state: stopped
+        enabled: no
+        masked: yes
+      loop:
+        - smbd
+        - nmbd
+        - winbind
+
+    - name: Uruchomienie zintegrowanej uslugi Samba AD DC
+      systemd:
+        name: samba-ad-dc
+        state: started
+        enabled: yes
+        masked: no
