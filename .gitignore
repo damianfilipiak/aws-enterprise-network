@@ -2,6 +2,8 @@
 **/.terraform/*
 *.tfstate
 *.tfstate.*
+.terraform.lock.hcl
+*.tfstate.backup
 crash.log
 crash.*.log
 *.tfvars
@@ -15,4 +17,13 @@ override.tf.json
 *.retry
 
 # Systemowe
+.DS_Store
+
+# Klucze SSH
+*.pem
+*.key
+id_rsa*
+
+# Logi i pliki tymczasowe
+*.log
 .DS_Store
