@@ -327,7 +327,22 @@ resource "local_file" "ansible_inventory" {
   filename = "../ansible/inventory/inventory.ini"
 }
 
-#Test CI/CD
+# DHCP for AD
+resource "aws_vpc_dhcp_options" "ad_dhcp" {
+  domain_name         = "ls.ege.ds"
+  domain_name_servers = ["10.128.30.10"] # IP Twojego serwera Samba AD DC
+
+  tags = {
+    Name = "Enterprise-AD-DHCP"
+  }
+}
+
+resource "aws_vpc_dhcp_options_association" "ad_dhcp_assoc" {
+  vpc_id          = aws_vpc.enterprise_vpc.id # Zaktualizowana nazwa Twojego VPC!
+  dhcp_options_id = aws_vpc_dhcp_options.ad_dhcp.id
+}
+
+# Test User1
 resource "aws_instance" "office_pc_1" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = "t3.micro"
@@ -335,24 +350,7 @@ resource "aws_instance" "office_pc_1" {
   vpc_security_group_ids = [aws_security_group.private_sg.id]
   iam_instance_profile   = aws_iam_instance_profile.ssm_profile.name
 
-  tags = { 
-    Name = "Office-User-Simulator" 
+  tags = {
+    Name = "Office-User-Simulator"
   }
 }
-
-# # ANSIBLE INVENTORY (Zero Trust / AWS SSM)
-# resource "local_file" "ansible_inventory" {
-#   content = <<-EOF
-#     [nat]
-#     ${aws_instance.nat_vpn_gateway.id}
-
-#     [ad]
-#     ${aws_instance.ad_server.id}
-
-#     [all:vars]
-#     ansible_user=ubuntu
-#     ansible_connection=aws_ssm
-#     ansible_aws_ssm_region=eu-central-1
-#   EOF
-#   filename = "../ansible/inventory/inventory.ini"
-# }
