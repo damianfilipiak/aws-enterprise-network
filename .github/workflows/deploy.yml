@@ -3,7 +3,7 @@ name: Deploy AWS Infrastructure & Active Directory
 on:
   push:
     branches:
-      - main  # autostart with git push
+      - main  # Trigger pipeline automatically on git push to main
 
 jobs:
   deploy:
@@ -11,11 +11,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # Get code from project
+    # 1. Get code from project repository
     - name: Checkout Repository
       uses: actions/checkout@v4
 
-    # Login to AWS - github secrets
+    # 2. Login to AWS using GitHub Secrets
     - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
@@ -23,43 +23,45 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: eu-central-1
 
-    # Install and configure terraformI
+    # 3. Setup SSH Key for Terraform and SSM Tunnel (MUST BE BEFORE TERRAFORM)
+    - name: Setup SSH Key
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keygen -y -f ~/.ssh/id_rsa > ~/.ssh/id_rsa.pub
+
+    # 4. Install and configure Terraform
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v3
       with:
         terraform_wrapper: false
 
+    # 5. Build Infrastructure
     - name: Terraform Init & Apply
       run: |
         cd terraform
         terraform init
         terraform apply -auto-approve
 
-    # Tunnel SSM and SSH keey
-    - name: Setup SSH Key
-      run: |
-        mkdir -p ~/.ssh
-        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-        chmod 600 ~/.ssh/id_rsa
-
-    # Install AWS Session Manager Plugin
+    # 6. Install AWS Session Manager Plugin for Zero Trust Tunnel
     - name: Install AWS Session Manager Plugin
       run: |
         curl "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" -o "session-manager-plugin.deb"
         sudo dpkg -i session-manager-plugin.deb
         rm session-manager-plugin.deb
 
-    # Install and start Ansible
+    # 7. Install Ansible and execute Playbook via SSM
     - name: Install Ansible & Configure Samba AD
       run: |
+        # Install Ansible and required AWS Python libraries
         sudo apt update
         sudo apt install -y ansible python3-boto3 python3-botocore
         ansible-galaxy collection install amazon.aws
 
-        # Save ansible passwd into temporary files
+        # Save Ansible Vault password to a temporary hidden file
         echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > ansible/.vault_pass
 
-        # Run playbook - tunnel SSM
+        # Run playbook via SSM tunnel
         cd ansible
         ansible-playbook -i inventory/inventory.ini playbook_ad.yml --private-key ~/.ssh/id_rsa --vault-password-file .vault_pass
-
