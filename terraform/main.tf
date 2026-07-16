@@ -3,6 +3,7 @@ terraform {
     bucket = "awscorponetwork-tfstate-damianfilipiakpl"
     key    = "prod/terraform.tfstate"
     region = "eu-central-1"
+    use_lockfile = true
   }
 }
 
@@ -166,8 +167,8 @@ resource "aws_security_group" "private_sg" {
 }
 
 resource "aws_security_group" "efs_sg" {
-  name        = "EFS-Storage-SG"
-  vpc_id      = aws_vpc.enterprise_vpc.id
+  name   = "EFS-Storage-SG"
+  vpc_id = aws_vpc.enterprise_vpc.id
 
   ingress {
     description     = "NFS for private servers"
@@ -192,7 +193,7 @@ resource "aws_efs_file_system" "enterprise_storage" {
   creation_token   = "enterprise-shared-data"
   performance_mode = "generalPurpose"
   throughput_mode  = "bursting"
-  encrypted        = true 
+  encrypted        = true
 
   tags = { Name = "Enterprise-Shared-Storage" }
 }
@@ -242,6 +243,8 @@ resource "aws_instance" "nat_vpn_gateway" {
               systemctl restart systemd-resolved
               EOF
   tags = { Name = "NAT-VPN-Gateway" }
+
+  depends_on = [aws_vpc_dhcp_options_association.ad_dhcp_assoc]
 }
 
 resource "aws_eip" "nat_eip" {
@@ -287,6 +290,7 @@ resource "aws_instance" "ad_server" {
     aws_route_table_association.private_rta_a,
     aws_route_table_association.private_rta_b,
     aws_efs_mount_target.efs_mount_a,
+    aws_vpc_dhcp_options_association.ad_dhcp_assoc,
   ]
 }
 
@@ -298,6 +302,8 @@ resource "aws_instance" "office_pc_1" {
   iam_instance_profile   = aws_iam_instance_profile.ssm_profile.name
 
   tags = { Name = "Office-User-Simulator" }
+
+  depends_on = [aws_vpc_dhcp_options_association.ad_dhcp_assoc]
 }
 
 # ROUTING
