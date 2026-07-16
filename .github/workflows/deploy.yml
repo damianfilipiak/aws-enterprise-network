@@ -51,6 +51,11 @@ jobs:
         sudo dpkg -i session-manager-plugin.deb
         rm session-manager-plugin.deb
 
+    - name: Wait for EC2 and SSM Agent to initialize
+      run: |
+        echo "Waiting 90s until Linux and SSM starts"
+        sleep 90
+
     # 7. Install Ansible and execute Playbook via SSM
     - name: Install Ansible & Configure Samba AD
       run: |
