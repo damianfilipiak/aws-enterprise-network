@@ -144,7 +144,7 @@ resource "aws_security_group" "public_sg" {
 
 resource "aws_security_group" "private_sg" {
   name        = "Private-Servers-SG"
-  description = "Full VPC communication for all private server"
+  description = "Full VPC communication for all private servers"
   vpc_id      = aws_vpc.enterprise_vpc.id
 
   ingress {
@@ -223,6 +223,10 @@ resource "aws_instance" "nat_vpn_gateway" {
               #!/bin/bash
               set -e
               
+              mkdir -p /etc/systemd/resolved.conf.d
+              echo -e "[Resolve]\nDNS=169.254.169.253" > /etc/systemd/resolved.conf.d/temp.conf
+              systemctl restart systemd-resolved
+              
               echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
               sysctl -p
               iptables -t nat -A POSTROUTING -j MASQUERADE
@@ -233,6 +237,9 @@ resource "aws_instance" "nat_vpn_gateway" {
               echo iptables-persistent iptables-persistent/autosave_v6 boolean true | debconf-set-selections
               apt-get install -y iptables-persistent
               netfilter-persistent save
+              
+              rm /etc/systemd/resolved.conf.d/temp.conf
+              systemctl restart systemd-resolved
               EOF
   tags = { Name = "NAT-VPN-Gateway" }
 }
@@ -255,6 +262,11 @@ resource "aws_instance" "ad_server" {
   user_data = <<-EOF
               #!/bin/bash
               set -e
+              
+              mkdir -p /etc/systemd/resolved.conf.d
+              echo -e "[Resolve]\nDNS=169.254.169.253" > /etc/systemd/resolved.conf.d/temp.conf
+              systemctl restart systemd-resolved
+              
               export DEBIAN_FRONTEND=noninteractive
               apt-get update -y
               apt-get install -y nfs-common amazon-efs-utils
@@ -264,6 +276,9 @@ resource "aws_instance" "ad_server" {
               mount -a -t efs || mount -a
               
               systemctl restart snap.amazon-ssm-agent.amazon-ssm-agent.service
+              
+              rm /etc/systemd/resolved.conf.d/temp.conf
+              systemctl restart systemd-resolved
               EOF
 
   tags = { Name = "Samba4-AD-DC" }
@@ -360,7 +375,7 @@ resource "local_file" "ansible_inventory" {
 # VPC GLOBAL DHCP OPTIONS
 resource "aws_vpc_dhcp_options" "ad_dhcp" {
   domain_name         = "ls.ege.ds"
-  domain_name_servers = ["10.128.30.10"]
+  domain_name_servers = ["10.128.30.10", "AmazonProvidedDNS"]
 
   tags = { Name = "Enterprise-AD-DHCP" }
 }
