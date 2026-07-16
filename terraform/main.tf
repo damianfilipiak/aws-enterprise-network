@@ -144,7 +144,7 @@ resource "aws_security_group" "public_sg" {
 
 resource "aws_security_group" "private_sg" {
   name        = "Private-Servers-SG"
-  description = "Full VPC communication for all private servers"
+  description = "Full VPC communication for all private server"
   vpc_id      = aws_vpc.enterprise_vpc.id
 
   ingress {
