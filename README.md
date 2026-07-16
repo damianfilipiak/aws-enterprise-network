@@ -1,68 +1,60 @@
 # AWS Enterprise Network & Cloud Active Directory (Samba4 AD DC)
 
-This project showcases a complete, automated cloud data center (VPC) architecture in AWS, built to simulate real-world corporate IT standards. The infrastructure is designed using the **Infrastructure as Code (IaC)** methodology with **Terraform**, while server provisioning and configuration are fully automated using **Ansible** and **GitHub Actions**.
+This project is a fully automated cloud network (VPC) in AWS. It simulates a real corporate IT environment. I used Terraform (Infrastructure as Code) to build the infrastructure, and Ansible with GitHub Actions to configure the servers automatically.
 
-The core of this network is a private **Active Directory (Samba4 AD DC)** domain controller, securely isolated in a private subnet.
+The heart of this network is a private Active Directory (Samba4 AD DC) server, safely hidden in a private subnet.
 
 ## 🏗️ Network Architecture
 
-The project implements a Multi-AZ architecture with strict network segmentation and a Zero-Trust approach.
+The network is divided into two Availability Zones for better reliability. It uses a Zero-Trust security model.
 
-* **VPC (10.128.0.0/16):** Divided into two availability zones (`eu-central-1a` and `eu-central-1b`).
-* **Public Subnets (DMZ):** Contain the NAT/VPN Gateway. These machines have public IPs and access to the Internet Gateway.
-* **Private Subnets (Secure Zone):** Host internal servers (like the AD controller and Office Simulator VMs). They have no public IP addresses. Outbound internet access is routed exclusively through the NAT Gateway.
-* **Custom NAT Gateway (EC2):** Acts as a software router (IP Masquerade via iptables) with AWS `source_dest_check` disabled to allow routing for private subnets.
-* **Samba4 AD DC (EC2):** A private server running the Active Directory domain controller role (`ls.ege.ds`).
-* **Amazon EFS:** A network file system mounted directly on the domain controller via a secure TLS tunnel.
-
-## 🛠️ Technologies Used
-
-* **Cloud Provider:** Amazon Web Services (VPC, EC2, EFS, IAM, Systems Manager - SSM, S3)
-* **Infrastructure as Code:** Terraform (with S3 Remote Backend)
-* **Configuration Management:** Ansible & Ansible Vault (for secret encryption)
-* **CI/CD Automation:** GitHub Actions (GitOps flow)
-* **Core Service:** Samba4 AD DC on Ubuntu Server 22.04 LTS
+* **VPC (10.128.0.0/16):** The main cloud network.
+* **Public Subnets (DMZ):** This is where the NAT and VPN Gateways live. They have public IPs and connect to the internet.
+* **Private Subnets (Secure Zone):** This is for internal servers (like the Active Directory) and user computers. They don't have public IPs. They connect to the internet safely through the NAT Gateway.
+* **Custom NAT Gateway (EC2):** A Linux server acting as a router to let private machines access the internet.
+* **Samba4 AD DC (EC2):** The main Active Directory domain controller (`ls.ege.ds`).
+* **Amazon EFS:** A shared network drive connected securely to the AD server.
 
 ## 🚀 Key Features
 
-* **Zero-Trust Access (No Port 22):** Traditional SSH access is completely disabled. All administrative connections and Ansible playbooks are executed securely through AWS Systems Manager (SSM) Session Manager.
-* **S3 Remote State Backend:** The Terraform `.tfstate` is securely hosted in an S3 bucket, allowing for seamless team collaboration and CI/CD consistency.
-* **Automated GitOps Pipeline:** Infrastructure modifications and software provisioning are strictly handled by GitHub Actions upon merging to the `main` branch.
+* **Zero-Trust Security (No Port 22):** Standard SSH is disabled. All administrative connections use AWS Systems Manager (SSM) for better security.
+* **S3 Remote Backend:** The Terraform state file is safely stored in an AWS S3 bucket. This makes teamwork and CI/CD possible.
+* **GitOps Pipeline:** Everything is automated. When I push code to the `main` branch, GitHub Actions automatically deploys the changes.
 
-## 🛣️ Future Roadmap
+## 🛣️ Roadmap (What I am building next)
 
-* [ ] **DHCP Options Set (In Progress):** Configuring the AWS VPC to automatically assign the Active Directory's IP as the primary DNS server for all newly launched internal instances.
-* [ ] **Client-to-Site VPN (OpenVPN/WireGuard):** Implementing a Remote Access VPN on the DMZ Gateway to allow off-site employees secure, encrypted access to the internal Active Directory and enterprise EFS storage.
-* [ ] **Automated Domain Join:** Creating scripts for new EC2 instances to automatically join the `ls.ege.ds` domain upon boot.
+* [ ] **DHCP Options Set:** Telling the AWS network to automatically give the AD server's IP as the main DNS to all new machines.
+* [ ] **PKI & LDAPS (Port 636):** Setting up a Root CA (Certificate Authority) to encrypt all Active Directory traffic and stop Man-in-the-Middle attacks.
+* [ ] **Client-to-Site VPN:** Setting up OpenVPN or WireGuard so remote workers can safely connect to the company network from home.
 
 ---
 
 ## 👨‍💻 How to test this project
 
-The deployment of this architecture is fully automated via GitHub Actions. If you simply want to verify the functionality, please check the **Actions** tab in this repository to see the successful pipeline runs. 
+Everything is deployed automatically by GitHub Actions. If you want to see if it works, just check the **Actions** tab in this repository to see the pipeline history.
 
-If you want to deploy this infrastructure in your own AWS account, please follow these steps:
+If you want to run this in your own AWS account, follow these steps:
 
 **1. Prerequisites**
-* Fork this repository to your own GitHub account.
-* Create an S3 Bucket in your AWS account to hold the Terraform state.
-* ❗ Update the S3 bucket name in `terraform/main.tf` (in the `backend "s3"` block). ❗
+* Fork this repository.
+* Create an S3 Bucket in your AWS account.
+* ❗ Change the S3 bucket name in `terraform/main.tf` (in the `backend "s3"` block). ❗
 
-**2. Configure GitHub Secrets**
-Go to your forked repository's **Settings -> Secrets and variables -> Actions** and add the following repository secrets:
+**2. GitHub Secrets**
+Go to **Settings -> Secrets and variables -> Actions** in your repository and add:
 
-* `AWS_ACCESS_KEY_ID`: Your IAM User Access Key (Ensure this user has sufficient permissions, e.g., AdministratorAccess for testing).
+* `AWS_ACCESS_KEY_ID`: Your IAM User Access Key.
 * `AWS_SECRET_ACCESS_KEY`: Your IAM User Secret Key.
-* `SSH_PRIVATE_KEY`: A generated RSA private key for the SSM tunnel. 
-  *(Don't have one? Generate it locally using: `ssh-keygen -t rsa -b 4096 -f ./id_rsa` and copy the contents of the `id_rsa` file).*
-* `ANSIBLE_VAULT_PASSWORD`: A custom password string used to decrypt the Ansible Active Directory credentials. Make sure it matches the password you used to encrypt your `!vault |` blocks.
+* `SSH_PRIVATE_KEY`: A generated RSA private key. *(You can make one locally using: `ssh-keygen -t rsa -b 4096 -f ./id_rsa`)*.
+* `ANSIBLE_VAULT_PASSWORD`: The password used to encrypt the Ansible variables.
 
-**3. Trigger Deployment**
-Once the secrets are in place, simply push a commit to the `main` branch. The GitHub Actions pipeline will automatically initialize Terraform, provision the AWS environment, establish an SSM tunnel, and configure the Active Directory via Ansible.
+**3. Deploy**
+Push a new commit to the `main` branch. GitHub Actions will run Terraform and Ansible automatically.
 
 ## 🧹 Teardown (Cost Management)
 
-To destroy the environment and avoid AWS charges, execute the following locally (assuming your local Terraform is initialized with your S3 backend):
+To delete everything and avoid AWS costs, run this locally:
+
 ```bash
 cd terraform
 terraform destroy -auto-approve
