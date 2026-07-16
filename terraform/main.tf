@@ -71,7 +71,7 @@ resource "aws_internet_gateway" "igw" {
   tags   = { Name = "Enterprise-IGW" }
 }
 
-# STREFA A (eu-central-1a)
+# AZ A (eu-central-1a)
 resource "aws_subnet" "public_subnet_a" {
   vpc_id                  = aws_vpc.enterprise_vpc.id
   cidr_block              = "10.128.10.0/24"
@@ -87,7 +87,6 @@ resource "aws_subnet" "private_subnet_a" {
   tags              = { Name = "Private-Server-Subnet-30-A" }
 }
 
-# Subnets for users - .40
 resource "aws_subnet" "private_user_subnet_a" {
   vpc_id            = aws_vpc.enterprise_vpc.id
   cidr_block        = "10.128.40.0/24"
@@ -95,7 +94,7 @@ resource "aws_subnet" "private_user_subnet_a" {
   tags              = { Name = "Private-User-Subnet-40-A" }
 }
 
-# STREFA B (eu-central-1b) - backup
+# AZ B (eu-central-1b)
 resource "aws_subnet" "public_subnet_b" {
   vpc_id                  = aws_vpc.enterprise_vpc.id
   cidr_block              = "10.128.11.0/24"
@@ -145,7 +144,7 @@ resource "aws_security_group" "public_sg" {
 
 resource "aws_security_group" "private_sg" {
   name        = "Private-Servers-SG"
-  description = "Full VPC communication for all private server"
+  description = "Full VPC communication for all private servers"
   vpc_id      = aws_vpc.enterprise_vpc.id
 
   ingress {
@@ -210,7 +209,7 @@ resource "aws_efs_mount_target" "efs_mount_b" {
   security_groups = [aws_security_group.efs_sg.id]
 }
 
-# EC2 (NAT & AD)
+# EC2 INSTANCES
 resource "aws_instance" "nat_vpn_gateway" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = "t3.micro"
@@ -223,14 +222,16 @@ resource "aws_instance" "nat_vpn_gateway" {
   user_data = <<-EOF
               #!/bin/bash
               set -e
+              
               echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
               sysctl -p
+              iptables -t nat -A POSTROUTING -j MASQUERADE
+              
               export DEBIAN_FRONTEND=noninteractive
               apt-get update -y
               echo iptables-persistent iptables-persistent/autosave_v4 boolean true | debconf-set-selections
               echo iptables-persistent iptables-persistent/autosave_v6 boolean true | debconf-set-selections
               apt-get install -y iptables-persistent
-              iptables -t nat -A POSTROUTING -j MASQUERADE
               netfilter-persistent save
               EOF
   tags = { Name = "NAT-VPN-Gateway" }
@@ -261,6 +262,8 @@ resource "aws_instance" "ad_server" {
               mkdir -p /mnt/shared-data
               echo "${aws_efs_file_system.enterprise_storage.id}:/ /mnt/shared-data efs _netdev,tls 0 0" >> /etc/fstab
               mount -a -t efs || mount -a
+              
+              systemctl restart snap.amazon-ssm-agent.amazon-ssm-agent.service
               EOF
 
   tags = { Name = "Samba4-AD-DC" }
@@ -270,6 +273,16 @@ resource "aws_instance" "ad_server" {
     aws_route_table_association.private_rta_b,
     aws_efs_mount_target.efs_mount_a,
   ]
+}
+
+resource "aws_instance" "office_pc_1" {
+  ami                    = data.aws_ami.ubuntu.id
+  instance_type          = "t3.micro"
+  subnet_id              = aws_subnet.private_user_subnet_a.id
+  vpc_security_group_ids = [aws_security_group.private_sg.id]
+  iam_instance_profile   = aws_iam_instance_profile.ssm_profile.name
+
+  tags = { Name = "Office-User-Simulator" }
 }
 
 # ROUTING
@@ -286,6 +299,7 @@ resource "aws_route_table_association" "public_rta_a" {
   subnet_id      = aws_subnet.public_subnet_a.id
   route_table_id = aws_route_table.public_rt.id
 }
+
 resource "aws_route_table_association" "public_rta_b" {
   subnet_id      = aws_subnet.public_subnet_b.id
   route_table_id = aws_route_table.public_rt.id
@@ -304,29 +318,31 @@ resource "aws_route_table_association" "private_rta_a" {
   subnet_id      = aws_subnet.private_subnet_a.id
   route_table_id = aws_route_table.private_rt.id
 }
+
 resource "aws_route_table_association" "private_rta_b" {
   subnet_id      = aws_subnet.private_subnet_b.id
   route_table_id = aws_route_table.private_rt.id
 }
 
-# Connect users with Ethernet (przez NAT)
 resource "aws_route_table_association" "private_user_rta_a" {
   subnet_id      = aws_subnet.private_user_subnet_a.id
   route_table_id = aws_route_table.private_rt.id
 }
 
-# OUTPUTS & ANSIBLE CONFIG
+# OUTPUTS
 output "nat_public_ip" {
   value = aws_eip.nat_eip.public_ip
 }
+
 output "ad_private_ip" {
   value = aws_instance.ad_server.private_ip
 }
+
 output "efs_dns_name" {
   value = aws_efs_file_system.enterprise_storage.dns_name
 }
 
-# ANSIBLE INVENTORY (SSH over SSM)
+# ANSIBLE INVENTORY
 resource "local_file" "ansible_inventory" {
   content = <<-EOF
     [nat]
@@ -341,32 +357,15 @@ resource "local_file" "ansible_inventory" {
   filename = "../ansible/inventory/inventory.ini"
 }
 
-# DHCP for AD
+# VPC GLOBAL DHCP OPTIONS
 resource "aws_vpc_dhcp_options" "ad_dhcp" {
   domain_name         = "ls.ege.ds"
   domain_name_servers = ["10.128.30.10"]
 
-  tags = {
-    Name = "Enterprise-AD-DHCP"
-  }
+  tags = { Name = "Enterprise-AD-DHCP" }
 }
 
 resource "aws_vpc_dhcp_options_association" "ad_dhcp_assoc" {
-  vpc_id          = aws_vpc.enterprise_vpc.id 
+  vpc_id          = aws_vpc.enterprise_vpc.id
   dhcp_options_id = aws_vpc_dhcp_options.ad_dhcp.id
-}
-
-# Test User1
-resource "aws_instance" "office_pc_1" {
-  ami                    = data.aws_ami.ubuntu.id
-  instance_type          = "t3.micro"
-  
-  subnet_id              = aws_subnet.private_user_subnet_a.id 
-  
-  vpc_security_group_ids = [aws_security_group.private_sg.id]
-  iam_instance_profile   = aws_iam_instance_profile.ssm_profile.name
-
-  tags = {
-    Name = "Office-User-Simulator"
-  }
 }
