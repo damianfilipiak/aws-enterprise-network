@@ -1,5 +1,5 @@
 ---
-- name: Instalacja i konfiguracja Samba4 AD DC
+- name: Install and configure Samba4 AD DC
   hosts: ad
   become: yes
   vars:
@@ -14,7 +14,7 @@
           3463
 
   tasks:
-    - name: Aktualizacja apt i instalacja wymaganych pakietow
+    - name: Update apt and install required packages
       apt:
         name:
           - samba
@@ -26,12 +26,12 @@
         state: present
         update_cache: yes
 
-    - name: Usuniecie domyslnego pliku smb.conf (aby AD moglo wygenerowac wlasny)
+    - name: Remove default smb.conf file (so AD can generate its own)
       file:
         path: /etc/samba/smb.conf
         state: absent
 
-    - name: Provisionowanie (Tworzenie) nowej domeny Active Directory
+    - name: Provision domain (create new Active Directory domain)
       shell: >
         samba-tool domain provision 
         --server-role=dc 
@@ -39,11 +39,11 @@
         --dns-backend=SAMBA_INTERNAL 
         --realm={{ domain_realm | upper }} 
         --domain={{ domain_netbios }} 
-        --adminpass='{{ admin_pass }}'
+        --adminpass='{{ vault_admin_pass }}'
       args:
         creates: /etc/samba/smb.conf
 
-    - name: Wylaczenie standardowych uslug Samba (konfliktuja z wersja AD DC)
+    - name: Disable standard Samba services (conflict with AD DC version)
       systemd:
         name: "{{ item }}"
         state: stopped
@@ -54,7 +54,7 @@
         - nmbd
         - winbind
 
-    - name: Uruchomienie zintegrowanej uslugi Samba AD DC
+    - name: Start integrated Samba AD DC service
       systemd:
         name: samba-ad-dc
         state: started
