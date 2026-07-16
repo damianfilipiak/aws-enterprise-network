@@ -327,6 +327,19 @@ resource "local_file" "ansible_inventory" {
   filename = "../ansible/inventory/inventory.ini"
 }
 
+#Test CI/CD
+resource "aws_instance" "office_pc_1" {
+  ami                    = data.aws_ami.ubuntu.id
+  instance_type          = "t3.micro"
+  subnet_id              = aws_subnet.private_subnet_a.id
+  vpc_security_group_ids = [aws_security_group.private_sg.id]
+  iam_instance_profile   = aws_iam_instance_profile.ssm_profile.name
+
+  tags = { 
+    Name = "Office-User-Simulator" 
+  }
+}
+
 # # ANSIBLE INVENTORY (Zero Trust / AWS SSM)
 # resource "local_file" "ansible_inventory" {
 #   content = <<-EOF
