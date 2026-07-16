@@ -1,0 +1,65 @@
+name: Deploy AWS Infrastructure & Active Directory
+
+on:
+  push:
+    branches:
+      - main  # autostart with git push
+
+jobs:
+  deploy:
+    name: Terraform & Ansible Provisioning
+    runs-on: ubuntu-latest
+
+    steps:
+    # Get code from project
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    # Login to AWS - github secrets
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: eu-central-1
+
+    # Install and configure terraformI
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_wrapper: false
+
+    - name: Terraform Init & Apply
+      run: |
+        cd terraform
+        terraform init
+        terraform apply -auto-approve
+
+    # Tunnel SSM and SSH keey
+    - name: Setup SSH Key
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+
+    # Install AWS Session Manager Plugin
+    - name: Install AWS Session Manager Plugin
+      run: |
+        curl "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" -o "session-manager-plugin.deb"
+        sudo dpkg -i session-manager-plugin.deb
+        rm session-manager-plugin.deb
+
+    # Install and start Ansible
+    - name: Install Ansible & Configure Samba AD
+      run: |
+        sudo apt update
+        sudo apt install -y ansible python3-boto3 python3-botocore
+        ansible-galaxy collection install amazon.aws
+
+        # Save ansible passwd into temporary files
+        echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > ansible/.vault_pass
+
+        # Run playbook - tunnel SSM
+        cd ansible
+        ansible-playbook -i inventory/inventory.ini playbook_ad.yml --private-key ~/.ssh/id_rsa --vault-password-file .vault_pass
+

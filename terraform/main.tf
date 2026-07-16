@@ -2,12 +2,40 @@ provider "aws" {
   region = "eu-central-1"
 }
 
-# SSH, AMI
 resource "aws_key_pair" "admin_key" {
   key_name   = "enterprise-admin-key"
-  public_key = file(var.public_key_path)
+  public_key = file("~/.ssh/id_rsa.pub")
 }
 
+# IAM for AWS SSM
+resource "aws_iam_role" "ssm_role" {
+  name = "Enterprise-SSM-Role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ssm_policy" {
+  role       = aws_iam_role.ssm_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+resource "aws_iam_instance_profile" "ssm_profile" {
+  name = "Enterprise-SSM-Profile"
+  role = aws_iam_role.ssm_role.name
+}
+
+# DATA (AMI)
 data "aws_ami" "ubuntu" {
   most_recent = true
   owners      = ["099720109477"]
@@ -22,7 +50,7 @@ data "aws_ami" "ubuntu" {
   }
 }
 
-# Multi-AZ
+# Multi-AZ VPC & SUBNETS
 resource "aws_vpc" "enterprise_vpc" {
   cidr_block           = "10.128.0.0/16"
   enable_dns_support   = true
@@ -67,20 +95,11 @@ resource "aws_subnet" "private_subnet_b" {
   tags              = { Name = "Private-Subnet-31-B" }
 }
 
-
-# 2. FW, SEC GROUP
+# FIREWALL / SECURITY GROUPS
 resource "aws_security_group" "public_sg" {
   name        = "Public-Gateway-SG"
-  description = "SSH admina, tunnel WireGuard, VPC"
+  description = "WireGuard tunnel, VPC communication (No SSH)"
   vpc_id      = aws_vpc.enterprise_vpc.id
-
-  ingress {
-    description = "SSH only for admin IP"
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = [var.admin_ip]
-  }
 
   ingress {
     description = "WireGuard tunnel"
@@ -153,7 +172,7 @@ resource "aws_security_group" "efs_sg" {
   tags = { Name = "EFS-Storage-SG" }
 }
 
-# Amazon EFS
+# AMAZON EFS
 resource "aws_efs_file_system" "enterprise_storage" {
   creation_token   = "enterprise-shared-data"
   performance_mode = "generalPurpose"
@@ -175,13 +194,14 @@ resource "aws_efs_mount_target" "efs_mount_b" {
   security_groups = [aws_security_group.efs_sg.id]
 }
 
-# NAT, SERVER AD
+# EC2 (NAT & AD)
 resource "aws_instance" "nat_vpn_gateway" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = "t3.micro"
   subnet_id              = aws_subnet.public_subnet_a.id
   vpc_security_group_ids = [aws_security_group.public_sg.id]
   source_dest_check      = false
+  iam_instance_profile   = aws_iam_instance_profile.ssm_profile.name
   key_name               = aws_key_pair.admin_key.key_name
 
   user_data = <<-EOF
@@ -211,6 +231,7 @@ resource "aws_instance" "ad_server" {
   instance_type          = "t3.small"
   subnet_id              = aws_subnet.private_subnet_a.id
   vpc_security_group_ids = [aws_security_group.private_sg.id]
+  iam_instance_profile   = aws_iam_instance_profile.ssm_profile.name
   key_name               = aws_key_pair.admin_key.key_name
   private_ip             = "10.128.30.10"
 
@@ -272,7 +293,7 @@ resource "aws_route_table_association" "private_rta_b" {
   route_table_id = aws_route_table.private_rt.id
 }
 
-# OUTPUTS
+# OUTPUTS & ANSIBLE CONFIG
 output "nat_public_ip" {
   value = aws_eip.nat_eip.public_ip
 }
@@ -283,17 +304,34 @@ output "efs_dns_name" {
   value = aws_efs_file_system.enterprise_storage.dns_name
 }
 
-# ANSIBLE
+# ANSIBLE INVENTORY (SSH over SSM)
 resource "local_file" "ansible_inventory" {
   content = <<-EOF
     [nat]
-    brama ansible_host=${aws_eip.nat_eip.public_ip} ansible_user=ubuntu
+    brama ansible_host=${aws_instance.nat_vpn_gateway.id} ansible_user=ubuntu
 
     [ad]
-    samba_dc ansible_host=${aws_instance.ad_server.private_ip} ansible_user=ubuntu
+    samba_dc ansible_host=${aws_instance.ad_server.id} ansible_user=ubuntu
 
-    [ad:vars]
-    ansible_ssh_common_args='-o ProxyJump=ubuntu@${aws_eip.nat_eip.public_ip} -o StrictHostKeyChecking=no'
+    [all:vars]
+    ansible_ssh_common_args='-o ProxyCommand="aws ssm start-session --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p" -o StrictHostKeyChecking=no'
   EOF
   filename = "../ansible/inventory/inventory.ini"
 }
+
+# # ANSIBLE INVENTORY (Zero Trust / AWS SSM)
+# resource "local_file" "ansible_inventory" {
+#   content = <<-EOF
+#     [nat]
+#     ${aws_instance.nat_vpn_gateway.id}
+
+#     [ad]
+#     ${aws_instance.ad_server.id}
+
+#     [all:vars]
+#     ansible_user=ubuntu
+#     ansible_connection=aws_ssm
+#     ansible_aws_ssm_region=eu-central-1
+#   EOF
+#   filename = "../ansible/inventory/inventory.ini"
+# }
