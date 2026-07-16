@@ -22,7 +22,7 @@ data "aws_ami" "ubuntu" {
   }
 }
 
-# 1. Multi-AZ
+# Multi-AZ
 resource "aws_vpc" "enterprise_vpc" {
   cidr_block           = "10.128.0.0/16"
   enable_dns_support   = true
@@ -194,7 +194,7 @@ resource "aws_instance" "nat_vpn_gateway" {
               echo iptables-persistent iptables-persistent/autosave_v4 boolean true | debconf-set-selections
               echo iptables-persistent iptables-persistent/autosave_v6 boolean true | debconf-set-selections
               apt-get install -y iptables-persistent
-              iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+              iptables -t nat -A POSTROUTING -j MASQUERADE
               netfilter-persistent save
               EOF
   tags = { Name = "NAT-VPN-Gateway" }
