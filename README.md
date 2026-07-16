@@ -63,7 +63,8 @@ Once the secrets are in place, simply push a commit to the `main` branch. The Gi
 ## 🧹 Teardown (Cost Management)
 
 To destroy the environment and avoid AWS charges, execute the following locally (assuming your local Terraform is initialized with your S3 backend):
-
+```bash
 cd terraform
 terraform destroy -auto-approve
 aws s3 rb s3://<YOUR-BUCKET-NAME> --force
+```
