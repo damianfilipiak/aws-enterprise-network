@@ -29,6 +29,11 @@ resource "aws_iam_role" "ssm_role" {
   })
 }
 
+resource "aws_s3_bucket" "ssm_ansible_bucket" {
+  bucket_prefix = "ssm-ansible-payloads-"
+  force_destroy = true
+}
+
 resource "aws_iam_role_policy" "ssm_s3_transfer" {
   name = "ssm-s3-file-transfer"
   role = aws_iam_role.ssm_role.id
@@ -39,12 +44,12 @@ resource "aws_iam_role_policy" "ssm_s3_transfer" {
       {
         Effect   = "Allow"
         Action   = ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"]
-        Resource = "arn:aws:s3:::damianfilipiakpl/*"
+        Resource = "${aws_s3_bucket.ssm_ansible_bucket.arn}/*"
       },
       {
         Effect   = "Allow"
         Action   = ["s3:ListBucket"]
-        Resource = "arn:aws:s3:::damianfilipiakpl"
+        Resource = aws_s3_bucket.ssm_ansible_bucket.arn
       }
     ]
   })
@@ -383,7 +388,7 @@ resource "local_file" "ansible_inventory" {
     samba_dc ansible_host=${aws_instance.ad_server.id}
 
     [all:vars]
-    ansible_aws_ssm_bucket_name=damianfilipiakpl
+    ansible_aws_ssm_bucket_name=${aws_s3_bucket.ssm_ansible_bucket.bucket}
     ansible_connection=amazon.aws.aws_ssm
     ansible_aws_ssm_region=eu-central-1
   EOF
