@@ -4,7 +4,9 @@ on:
   push:
     branches:
       - main # Trigger pipeline automatically on git push to main
-
+    paths-ignore:
+      - 'README.md'
+      - '.gitignore'
 jobs:
   deploy:
     name: Terraform & Ansible Provisioning
