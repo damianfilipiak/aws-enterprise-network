@@ -233,8 +233,6 @@ resource "aws_instance" "nat_vpn_gateway" {
               apt-get install -y iptables-persistent
               netfilter-persistent save
               
-              rm /etc/systemd/resolved.conf.d/temp.conf
-              systemctl restart systemd-resolved
               EOF
   tags = { Name = "NAT-VPN-Gateway" }
 
@@ -273,8 +271,6 @@ resource "aws_instance" "ad_server" {
               
               systemctl restart snap.amazon-ssm-agent.amazon-ssm-agent.service
               
-              rm /etc/systemd/resolved.conf.d/temp.conf
-              systemctl restart systemd-resolved
               EOF
 
   tags = { Name = "Samba4-AD-DC" }
@@ -360,13 +356,14 @@ output "efs_dns_name" {
 resource "local_file" "ansible_inventory" {
   content = <<-EOF
     [nat]
-    brama ansible_host=${aws_instance.nat_vpn_gateway.id} ansible_user=ubuntu
+    brama ansible_host=${aws_instance.nat_vpn_gateway.id}
 
     [ad]
-    samba_dc ansible_host=${aws_instance.ad_server.id} ansible_user=ubuntu
+    samba_dc ansible_host=${aws_instance.ad_server.id}
 
     [all:vars]
-    ansible_ssh_common_args='-o ProxyCommand="aws ssm start-session --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p" -o StrictHostKeyChecking=no'
+    ansible_connection=amazon.aws.aws_ssm
+    ansible_aws_ssm_region=eu-central-1
   EOF
   filename = "../ansible/inventory/inventory.ini"
 }
