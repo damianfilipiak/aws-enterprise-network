@@ -11,11 +11,6 @@ provider "aws" {
   region = "eu-central-1"
 }
 
-resource "aws_key_pair" "admin_key" {
-  key_name   = "enterprise-admin-key"
-  public_key = file("~/.ssh/id_rsa.pub")
-}
-
 # IAM for AWS SSM
 resource "aws_iam_role" "ssm_role" {
   name = "Enterprise-SSM-Role"
@@ -218,7 +213,6 @@ resource "aws_instance" "nat_vpn_gateway" {
   vpc_security_group_ids = [aws_security_group.public_sg.id]
   source_dest_check      = false
   iam_instance_profile   = aws_iam_instance_profile.ssm_profile.name
-  key_name               = aws_key_pair.admin_key.key_name
 
   user_data = <<-EOF
               #!/bin/bash
@@ -259,7 +253,6 @@ resource "aws_instance" "ad_server" {
   subnet_id              = aws_subnet.private_subnet_a.id
   vpc_security_group_ids = [aws_security_group.private_sg.id]
   iam_instance_profile   = aws_iam_instance_profile.ssm_profile.name
-  key_name               = aws_key_pair.admin_key.key_name
   private_ip             = "10.128.30.10"
 
   user_data = <<-EOF
