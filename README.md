@@ -17,13 +17,14 @@ The network is divided into two Availability Zones for better reliability. It us
 
 ## 🚀 Key Features
 
-* **Zero-Trust Security (No Port 22):** Standard SSH is disabled. All administrative connections use AWS Systems Manager (SSM) for better security.
+* **Zero-Trust Security (100% Keyless & No Port 22):** Standard SSH is completely disabled. All administrative connections and Ansible deployments use native AWS Systems Manager (SSM) without any SSH keys.
+* **Automated DHCP Options:** The AWS network automatically injects the Active Directory's IP as the primary DNS for all machines in the VPC.
 * **S3 Remote Backend:** The Terraform state file is safely stored in an AWS S3 bucket. This makes teamwork and CI/CD possible.
 * **GitOps Pipeline:** Everything is automated. When I push code to the `main` branch, GitHub Actions automatically deploys the changes.
 
 ## 🛣️ Roadmap (What I am building next)
 
-* [ ] **DHCP Options Set:** Telling the AWS network to automatically give the AD server's IP as the main DNS to all new machines.
+* [x] **DHCP Options Set:** Telling the AWS network to automatically give the AD server's IP as the main DNS to all new machines.
 * [ ] **PKI & LDAPS (Port 636):** Setting up a Root CA (Certificate Authority) to encrypt all Active Directory traffic and stop Man-in-the-Middle attacks.
 * [ ] **Client-to-Site VPN:** Setting up OpenVPN or WireGuard so remote workers can safely connect to the company network from home.
 
@@ -45,7 +46,6 @@ Go to **Settings -> Secrets and variables -> Actions** in your repository and ad
 
 * `AWS_ACCESS_KEY_ID`: Your IAM User Access Key.
 * `AWS_SECRET_ACCESS_KEY`: Your IAM User Secret Key.
-* `SSH_PRIVATE_KEY`: A generated RSA private key. *(You can make one locally using: `ssh-keygen -t rsa -b 4096 -f ./id_rsa`)*.
 * `ANSIBLE_VAULT_PASSWORD`: The password used to encrypt the Ansible variables.
 
 **3. Deploy**
@@ -57,6 +57,6 @@ To delete everything and avoid AWS costs, run this locally:
 
 ```bash
 cd terraform
+terraform init
 terraform destroy -auto-approve
 aws s3 rb s3://<YOUR-BUCKET-NAME> --force
-```
