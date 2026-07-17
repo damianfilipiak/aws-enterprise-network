@@ -407,3 +407,5 @@ resource "aws_vpc_dhcp_options_association" "ad_dhcp_assoc" {
   vpc_id          = aws_vpc.enterprise_vpc.id
   dhcp_options_id = aws_vpc_dhcp_options.ad_dhcp.id
 }
+
+# Test Recovery
