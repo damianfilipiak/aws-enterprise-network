@@ -12,18 +12,22 @@ provider "aws" {
 }
 
 # IAM for AWS SSM
-resource "aws_iam_role" "ssm_role" {
-  name = "Enterprise-SSM-Role"
+resource "aws_iam_role_policy" "ssm_s3_transfer" {
+  name = "ssm-s3-file-transfer"
+  role = aws_iam_role.ssm_role.id
 
-  assume_role_policy = jsonencode({
+  policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "ec2.amazonaws.com"
-        }
+        Effect   = "Allow"
+        Action   = ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"]
+        Resource = "arn:aws:s3:::damianfilipiakpl/*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
+        Resource = "arn:aws:s3:::damianfilipiakpl"
       }
     ]
   })
@@ -362,6 +366,7 @@ resource "local_file" "ansible_inventory" {
     samba_dc ansible_host=${aws_instance.ad_server.id}
 
     [all:vars]
+    ansible_aws_ssm_bucket_name=damianfilipiakpl
     ansible_connection=amazon.aws.aws_ssm
     ansible_aws_ssm_region=eu-central-1
   EOF

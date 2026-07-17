@@ -87,7 +87,6 @@ jobs:
           # Run playbook via SSM tunnel
           cd ansible
           ansible-playbook -i inventory/inventory.ini playbook_ad.yml \
-            --private-key ~/.ssh/id_rsa \
             --vault-password-file .vault_pass
 
       # 9. Clean up the vault password file regardless of success/failure,
