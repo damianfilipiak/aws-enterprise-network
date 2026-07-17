@@ -1,8 +1,8 @@
 terraform {
   backend "s3" {
-    bucket = "awscorponetwork-tfstate-damianfilipiakpl"
-    key    = "prod/terraform.tfstate"
-    region = "eu-central-1"
+    bucket       = "awscorponetwork-tfstate-damianfilipiakpl"
+    key          = "prod/terraform.tfstate"
+    region       = "eu-central-1"
     use_lockfile = true
   }
 }
@@ -12,6 +12,23 @@ provider "aws" {
 }
 
 # IAM for AWS SSM
+resource "aws_iam_role" "ssm_role" {
+  name = "Enterprise-SSM-Role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
 resource "aws_iam_role_policy" "ssm_s3_transfer" {
   name = "ssm-s3-file-transfer"
   role = aws_iam_role.ssm_role.id
