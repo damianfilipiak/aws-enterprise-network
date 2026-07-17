@@ -75,16 +75,15 @@ jobs:
       # 8. Install Ansible and execute Playbook via SSM
       - name: Install Ansible & Configure Samba AD
         run: |
-          # Install Ansible and required AWS Python libraries
-          sudo apt update
-          sudo apt install -y ansible python3-boto3 python3-botocore
+          # Zainstaluj biblioteki AWS bezpośrednio w środowisku wbudowanego Ansible'a
+          sudo /opt/pipx/venvs/ansible-core/bin/python -m pip install boto3 botocore
           ansible-galaxy collection install amazon.aws
 
           # Save Ansible Vault password to a temporary hidden file
           echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > ansible/.vault_pass
           chmod 600 ansible/.vault_pass
 
-          # Run playbook via SSM tunnel
+          # Run playbook via native SSM plugin
           cd ansible
           ansible-playbook -i inventory/inventory.ini playbook_ad.yml \
             --vault-password-file .vault_pass
