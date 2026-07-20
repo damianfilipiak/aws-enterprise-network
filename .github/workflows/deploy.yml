@@ -47,6 +47,7 @@ jobs:
         run: |
           cd terraform
           terraform init
+          terraform force-unlock -force bd5c35e9-e48c-0b72-68fc-481355941f88
           terraform apply -auto-approve
 
       # 6. Install AWS Session Manager Plugin for Zero Trust Tunnel
