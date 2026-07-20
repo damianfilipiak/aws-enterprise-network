@@ -19,6 +19,8 @@
           - awscli 
         state: present
         update_cache: yes
+      environment:
+        DEBIAN_FRONTEND: noninteractive
 
     - name: Remove default smb.conf file (so AD can generate its own)
       file:

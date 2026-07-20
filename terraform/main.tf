@@ -58,8 +58,8 @@ resource "aws_iam_role_policy" "ssm_s3_transfer" {
         Resource = aws_s3_bucket.ssm_ansible_bucket.arn
       },
       {
-        Effect   = "Allow"
-        Action   = "secretsmanager:GetSecretValue"
+        Effect = "Allow"
+        Action = "secretsmanager:GetSecretValue"
         Resource = [
           aws_secretsmanager_secret.ad_password_secret.arn,
           aws_secretsmanager_secret.ad_connector_secret.arn
@@ -254,12 +254,13 @@ resource "aws_efs_mount_target" "efs_mount_b" {
 
 # EC2 INSTANCES
 resource "aws_instance" "nat_vpn_gateway" {
-  ami                    = data.aws_ami.ubuntu.id
-  instance_type          = "t3.micro"
-  subnet_id              = aws_subnet.public_subnet_a.id
-  vpc_security_group_ids = [aws_security_group.public_sg.id]
-  source_dest_check      = false
-  iam_instance_profile   = aws_iam_instance_profile.ssm_profile.name
+  ami                         = data.aws_ami.ubuntu.id
+  instance_type               = "t3.micro"
+  subnet_id                   = aws_subnet.public_subnet_a.id
+  vpc_security_group_ids      = [aws_security_group.public_sg.id]
+  source_dest_check           = false
+  iam_instance_profile        = aws_iam_instance_profile.ssm_profile.name
+  user_data_replace_on_change = true
 
   user_data = replace(<<EOF
 #!/bin/bash
@@ -281,11 +282,28 @@ echo iptables-persistent iptables-persistent/autosave_v4 boolean true | debconf-
 echo iptables-persistent iptables-persistent/autosave_v6 boolean true | debconf-set-selections
 apt-get install -y iptables-persistent
 netfilter-persistent save
+
+if ! command -v snap >/dev/null 2>&1; then
+  apt-get update -y
+  apt-get install -y snapd
+  systemctl enable --now snapd
+fi
+
+if ! systemctl list-unit-files --all | grep -q 'snap.amazon-ssm-agent.amazon-ssm-agent.service'; then
+  snap install amazon-ssm-agent --classic || true
+fi
+
+if systemctl list-unit-files --all | grep -q 'snap.amazon-ssm-agent.amazon-ssm-agent.service'; then
+  systemctl enable --now snap.amazon-ssm-agent.amazon-ssm-agent.service || true
+else
+  curl -o /tmp/amazon-ssm-agent.deb https://s3.amazonaws.com/ec2-downloads-windows/SSMAgent/latest/debian_amd64/amazon-ssm-agent.deb
+  dpkg -i /tmp/amazon-ssm-agent.deb || true
+  systemctl enable --now amazon-ssm-agent || true
+fi
 EOF
   , "\r", "")
-  
-  tags = { Name = "NAT-VPN-Gateway" }
 
+  tags = { Name = "NAT-VPN-Gateway" }
   depends_on = [aws_vpc_dhcp_options_association.ad_dhcp_assoc]
 }
 
@@ -296,12 +314,13 @@ resource "aws_eip" "nat_eip" {
 }
 
 resource "aws_instance" "ad_server" {
-  ami                    = data.aws_ami.ubuntu.id
-  instance_type          = "t3.small"
-  subnet_id              = aws_subnet.private_subnet_a.id
-  vpc_security_group_ids = [aws_security_group.private_sg.id]
-  iam_instance_profile   = aws_iam_instance_profile.ssm_profile.name
-  private_ip             = "10.128.30.10"
+  ami                         = data.aws_ami.ubuntu.id
+  instance_type               = "t3.small"
+  subnet_id                   = aws_subnet.private_subnet_a.id
+  vpc_security_group_ids      = [aws_security_group.private_sg.id]
+  iam_instance_profile        = aws_iam_instance_profile.ssm_profile.name
+  private_ip                  = "10.128.30.10"
+  user_data_replace_on_change = true
 
   user_data = replace(<<EOF
 #!/bin/bash
@@ -314,7 +333,23 @@ for i in {1..36}; do
   sleep 5
 done
 
-systemctl restart snap.amazon-ssm-agent.amazon-ssm-agent.service
+if ! command -v snap >/dev/null 2>&1; then
+  apt-get update -y
+  apt-get install -y snapd
+  systemctl enable --now snapd
+fi
+
+if ! systemctl list-unit-files --all | grep -q 'snap.amazon-ssm-agent.amazon-ssm-agent.service'; then
+  snap install amazon-ssm-agent --classic || true
+fi
+
+if systemctl list-unit-files --all | grep -q 'snap.amazon-ssm-agent.amazon-ssm-agent.service'; then
+  systemctl enable --now snap.amazon-ssm-agent.amazon-ssm-agent.service || true
+else
+  curl -o /tmp/amazon-ssm-agent.deb https://s3.amazonaws.com/ec2-downloads-windows/SSMAgent/latest/debian_amd64/amazon-ssm-agent.deb
+  dpkg -i /tmp/amazon-ssm-agent.deb || true
+  systemctl enable --now amazon-ssm-agent || true
+fi
 
 export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=a
@@ -428,7 +463,7 @@ output "efs_dns_name" {
 
 # ANSIBLE INVENTORY
 resource "local_file" "ansible_inventory" {
-  content = <<-EOF
+  content  = <<-EOF
     [nat]
     brama ansible_host=${aws_instance.nat_vpn_gateway.id}
 
@@ -467,7 +502,7 @@ resource "random_password" "ad_admin_password" {
 resource "aws_secretsmanager_secret" "ad_password_secret" {
   name                    = "enterprise/ad/admin-password"
   description             = "Administrator password for Samba Active Directory"
-  recovery_window_in_days = 0 
+  recovery_window_in_days = 0
 }
 
 # PUT PASSWD IN VAULT
@@ -529,7 +564,7 @@ resource "random_password" "ad_connector_password" {
 resource "aws_secretsmanager_secret" "ad_connector_secret" {
   name                    = "enterprise/ad/connector-password"
   description             = "Password for AWS AD Connector service account"
-  recovery_window_in_days = 0 
+  recovery_window_in_days = 0
 }
 
 resource "aws_secretsmanager_secret_version" "ad_connector_version" {
@@ -546,18 +581,18 @@ data "aws_secretsmanager_secret_version" "ad_connector_pwd" {
 
 # AWS AD CONNECTOR
 resource "aws_directory_service_directory" "ad_connector" {
-  count    = var.deploy_ad_connector ? 1 : 0
-  
+  count = var.deploy_ad_connector ? 1 : 0
+
   name     = "ls.ege.ds"
   password = data.aws_secretsmanager_secret_version.ad_connector_pwd.secret_string
   size     = "Small"
   type     = "ADConnector"
 
   connect_settings {
-    customer_dns_ips  = [aws_instance.ad_server.private_ip] 
+    customer_dns_ips  = [aws_instance.ad_server.private_ip]
     customer_username = "aws-svc"
-    subnet_ids        = [aws_subnet.private_subnet_a.id, aws_subnet.private_subnet_b.id] 
-    vpc_id            = aws_vpc.enterprise_vpc.id 
+    subnet_ids        = [aws_subnet.private_subnet_a.id, aws_subnet.private_subnet_b.id]
+    vpc_id            = aws_vpc.enterprise_vpc.id
   }
 }
 
