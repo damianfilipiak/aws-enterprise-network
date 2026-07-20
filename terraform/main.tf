@@ -198,6 +198,62 @@ resource "aws_security_group" "private_sg" {
     cidr_blocks = ["10.128.0.0/16"]
   }
 
+  ingress {
+    description = "DNS TCP/UDP"
+    from_port   = 53
+    to_port     = 53
+    protocol    = "tcp"
+    cidr_blocks = ["10.128.0.0/16"]
+  }
+
+  ingress {
+    description = "DNS UDP"
+    from_port   = 53
+    to_port     = 53
+    protocol    = "udp"
+    cidr_blocks = ["10.128.0.0/16"]
+  }
+
+  ingress {
+    description = "LDAP / Kerberos"
+    from_port   = 389
+    to_port     = 389
+    protocol    = "tcp"
+    cidr_blocks = ["10.128.0.0/16"]
+  }
+
+  ingress {
+    description = "Kerberos / KDC"
+    from_port   = 88
+    to_port     = 88
+    protocol    = "tcp"
+    cidr_blocks = ["10.128.0.0/16"]
+  }
+
+  ingress {
+    description = "Kerberos UDP"
+    from_port   = 88
+    to_port     = 88
+    protocol    = "udp"
+    cidr_blocks = ["10.128.0.0/16"]
+  }
+
+  ingress {
+    description = "Kerberos password change"
+    from_port   = 464
+    to_port     = 464
+    protocol    = "tcp"
+    cidr_blocks = ["10.128.0.0/16"]
+  }
+
+  ingress {
+    description = "Kerberos password change UDP"
+    from_port   = 464
+    to_port     = 464
+    protocol    = "udp"
+    cidr_blocks = ["10.128.0.0/16"]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -303,7 +359,7 @@ fi
 EOF
   , "\r", "")
 
-  tags = { Name = "NAT-VPN-Gateway" }
+  tags       = { Name = "NAT-VPN-Gateway" }
   depends_on = [aws_vpc_dhcp_options_association.ad_dhcp_assoc]
 }
 
