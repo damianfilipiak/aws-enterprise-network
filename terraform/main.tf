@@ -199,7 +199,7 @@ resource "aws_security_group" "private_sg" {
   }
 
   ingress {
-    description = "DNS TCP/UDP"
+    description = "DNS TCP from private VPC"
     from_port   = 53
     to_port     = 53
     protocol    = "tcp"
@@ -207,7 +207,7 @@ resource "aws_security_group" "private_sg" {
   }
 
   ingress {
-    description = "DNS UDP"
+    description = "DNS UDP from private VPC"
     from_port   = 53
     to_port     = 53
     protocol    = "udp"
@@ -215,7 +215,7 @@ resource "aws_security_group" "private_sg" {
   }
 
   ingress {
-    description = "LDAP / Kerberos"
+    description = "LDAP from private VPC"
     from_port   = 389
     to_port     = 389
     protocol    = "tcp"
@@ -223,7 +223,7 @@ resource "aws_security_group" "private_sg" {
   }
 
   ingress {
-    description = "Kerberos / KDC"
+    description = "Kerberos TCP from private VPC"
     from_port   = 88
     to_port     = 88
     protocol    = "tcp"
@@ -231,7 +231,7 @@ resource "aws_security_group" "private_sg" {
   }
 
   ingress {
-    description = "Kerberos UDP"
+    description = "Kerberos UDP from private VPC"
     from_port   = 88
     to_port     = 88
     protocol    = "udp"
@@ -239,7 +239,7 @@ resource "aws_security_group" "private_sg" {
   }
 
   ingress {
-    description = "Kerberos password change"
+    description = "Kerberos password change TCP from private VPC"
     from_port   = 464
     to_port     = 464
     protocol    = "tcp"
@@ -247,7 +247,7 @@ resource "aws_security_group" "private_sg" {
   }
 
   ingress {
-    description = "Kerberos password change UDP"
+    description = "Kerberos password change UDP from private VPC"
     from_port   = 464
     to_port     = 464
     protocol    = "udp"
