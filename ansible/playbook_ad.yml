@@ -16,7 +16,10 @@
           - libnss-winbind
           - krb5-user
           - krb5-config
-          - awscli 
+          - awscli
+          - bind9
+          - bind9utils
+          - dnsutils
         state: present
         update_cache: yes
       environment:
@@ -74,6 +77,79 @@
         enabled: yes
         masked: no
 
+    - name: Configure BIND9 DNS service for the AD domain
+      block:
+        - name: Create BIND9 options config
+          copy:
+            dest: /etc/bind/named.conf.options
+            content: |
+              options {
+                  directory "/var/cache/bind";
+                  listen-on { any; };
+                  listen-on-v6 { any; };
+                  allow-query { any; };
+                  recursion yes;
+                  forwarders { 1.1.1.1; 8.8.8.8; };
+                  dnssec-validation no;
+                  auth-nxdomain no;
+                  listen-on-v6 { any; };
+              };
+            mode: '0644'
+
+        - name: Create BIND9 local zone config
+          copy:
+            dest: /etc/bind/named.conf.local
+            content: |
+              zone "ls.ege.ds" {
+                  type master;
+                  file "/etc/bind/zones/db.ls.ege.ds";
+              };
+
+              zone "30.128.10.in-addr.arpa" {
+                  type master;
+                  file "/etc/bind/zones/db.10.128.30";
+              };
+            mode: '0644'
+
+        - name: Create forward DNS zone file
+          copy:
+            dest: /etc/bind/zones/db.ls.ege.ds
+            content: |
+              $TTL 3600
+              @ IN SOA dc.ls.ege.ds. hostmaster.ls.ege.ds. (
+                2026072001 3600 600 86400 3600 )
+              @ IN NS dc.ls.ege.ds.
+              @ IN A 10.128.30.10
+              dc IN A 10.128.30.10
+            mode: '0644'
+
+        - name: Create reverse DNS zone file
+          copy:
+            dest: /etc/bind/zones/db.10.128.30
+            content: |
+              $TTL 3600
+              @ IN SOA dc.ls.ege.ds. hostmaster.ls.ege.ds. (
+                2026072001 3600 600 86400 3600 )
+              @ IN NS dc.ls.ege.ds.
+              10 IN PTR dc.ls.ege.ds.
+            mode: '0644'
+
+        - name: Ensure BIND9 zone directory exists
+          file:
+            path: /etc/bind/zones
+            state: directory
+            mode: '0755'
+
+        - name: Validate BIND9 configuration
+          command: named-checkconf
+          changed_when: false
+
+        - name: Enable and start BIND9 service
+          systemd:
+            name: bind9
+            state: restarted
+            enabled: yes
+
     - name: Check Samba AD DC service status
       systemd:
         name: samba-ad-dc
@@ -81,7 +157,7 @@
       register: ad_dc_status
       ignore_errors: true
 
-    - name: Wait briefly for Samba AD DC to finish startup
+    - name: Wait briefly for Samba AD DC and DNS to finish startup
       pause:
         seconds: 60
 

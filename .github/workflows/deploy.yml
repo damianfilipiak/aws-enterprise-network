@@ -94,6 +94,11 @@ jobs:
           echo "Waiting 3 minutes for Samba AD DNS/LDAP/Kerberos services to settle..."
           sleep 180
 
+      - name: Verify Samba AD DNS is reachable before AD Connector
+        run: |
+          set -e
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@10.128.30.10 'host ls.ege.ds 127.0.0.1' || true
+
       - name: Terraform Apply (Deploy AD Connector)
         run: |
           cd terraform
