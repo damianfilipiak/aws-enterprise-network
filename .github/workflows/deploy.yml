@@ -46,8 +46,8 @@ jobs:
       - name: Terraform Init & Apply (Base Infrastructure)
         run: |
           cd terraform
-          terraform init
-          terraform apply -auto-approve
+          terraform init -reconfigure
+          terraform apply -auto-approve -lock=false
 
       # 6. Install AWS Session Manager Plugin for Zero Trust Tunnel
       - name: Install AWS Session Manager Plugin
@@ -89,7 +89,13 @@ jobs:
           ansible-playbook -i inventory/inventory.ini playbook_ad.yml
 
       # 9. Build AWS AD Connector (Stage 2 - after Samba is fully operational)
+      - name: Wait for Samba AD ports to be fully ready before AD Connector
+        run: |
+          echo "Waiting 3 minutes for Samba AD DNS/LDAP/Kerberos services to settle..."
+          sleep 180
+
       - name: Terraform Apply (Deploy AD Connector)
         run: |
           cd terraform
-          terraform apply -var="deploy_ad_connector=true" -auto-approve
+          terraform init -reconfigure
+          terraform apply -var="deploy_ad_connector=true" -auto-approve -lock=false

@@ -73,6 +73,20 @@
         state: started
         enabled: yes
         masked: no
+
+    - name: Wait for Samba AD DC ports to become reachable
+      wait_for:
+        host: "{{ ansible_default_ipv4.address }}"
+        port: "{{ item }}"
+        delay: 5
+        timeout: 600
+        state: started
+      loop:
+        - 53
+        - 389
+        - 88
+        - 464
+
     # SERVICES ACC AWS
     - name: Get passwd for serv acc from AWS Secrets Manager
       command: >
