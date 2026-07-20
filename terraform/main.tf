@@ -559,3 +559,6 @@ resource "aws_directory_service_directory" "ad_connector" {
     vpc_id            = aws_vpc.enterprise_vpc.id 
   }
 }
+
+
+# TEST
