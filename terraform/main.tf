@@ -261,29 +261,28 @@ resource "aws_instance" "nat_vpn_gateway" {
   source_dest_check      = false
   iam_instance_profile   = aws_iam_instance_profile.ssm_profile.name
 
-  user_data = <<-EOF
-              #!/bin/bash
-              set -e
-              
-              mkdir -p /etc/systemd/resolved.conf.d
-              echo -e "[Resolve]\nDNS=169.254.169.253" > /etc/systemd/resolved.conf.d/temp.conf
-              systemctl restart systemd-resolved
-              
-              echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
-              sysctl -p
-              iptables -t nat -A POSTROUTING -j MASQUERADE
-              
-              export DEBIAN_FRONTEND=noninteractive
-              export NEEDRESTART_MODE=a
-              sed -i 's/#$nrconf{restart} = '"'"'i'"'"';/$nrconf{restart} = '"'"'a'"'"';/g' /etc/needrestart/needrestart.conf || true
-              
-              apt-get update -y
-              echo iptables-persistent iptables-persistent/autosave_v4 boolean true | debconf-set-selections
-              echo iptables-persistent iptables-persistent/autosave_v6 boolean true | debconf-set-selections
-              apt-get install -y iptables-persistent
-              netfilter-persistent save
+  user_data = <<EOF
+#!/bin/bash
+set -e
 
-              EOF
+mkdir -p /etc/systemd/resolved.conf.d
+echo -e "[Resolve]\nDNS=169.254.169.253" > /etc/systemd/resolved.conf.d/temp.conf
+systemctl restart systemd-resolved
+
+echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+sysctl -p
+iptables -t nat -A POSTROUTING -j MASQUERADE
+
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
+sed -i 's/#$nrconf{restart} = '"'"'i'"'"';/$nrconf{restart} = '"'"'a'"'"';/g' /etc/needrestart/needrestart.conf || true
+
+apt-get update -y
+echo iptables-persistent iptables-persistent/autosave_v4 boolean true | debconf-set-selections
+echo iptables-persistent iptables-persistent/autosave_v6 boolean true | debconf-set-selections
+apt-get install -y iptables-persistent
+netfilter-persistent save
+EOF
   
   tags = { Name = "NAT-VPN-Gateway" }
 
@@ -304,31 +303,31 @@ resource "aws_instance" "ad_server" {
   iam_instance_profile   = aws_iam_instance_profile.ssm_profile.name
   private_ip             = "10.128.30.10"
 
-  user_data = <<-EOF
-              #!/bin/bash
-              set -e
-              
-              mkdir -p /etc/systemd/resolved.conf.d
-              echo -e "[Resolve]\nDNS=169.254.169.253" > /etc/systemd/resolved.conf.d/temp.conf
-              systemctl restart systemd-resolved
-              
-              until curl -sI https://aws.amazon.com >/dev/null; do
-                sleep 5
-              done
-              
-              export DEBIAN_FRONTEND=noninteractive
-              export NEEDRESTART_MODE=a
-              sed -i 's/#$nrconf{restart} = '"'"'i'"'"';/$nrconf{restart} = '"'"'a'"'"';/g' /etc/needrestart/needrestart.conf || true
-              
-              apt-get update -y
-              apt-get install -y nfs-common amazon-efs-utils
+  user_data = <<EOF
+#!/bin/bash
+set -e
 
-              mkdir -p /mnt/shared-data
-              echo "${aws_efs_file_system.enterprise_storage.id}:/ /mnt/shared-data efs _netdev,tls 0 0" >> /etc/fstab
-              mount -a -t efs || mount -a
-              
-              systemctl restart snap.amazon-ssm-agent.amazon-ssm-agent.service
-              EOF
+mkdir -p /etc/systemd/resolved.conf.d
+echo -e "[Resolve]\nDNS=169.254.169.253" > /etc/systemd/resolved.conf.d/temp.conf
+systemctl restart systemd-resolved
+
+until curl -sI https://aws.amazon.com >/dev/null; do
+  sleep 5
+done
+
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
+sed -i 's/#$nrconf{restart} = '"'"'i'"'"';/$nrconf{restart} = '"'"'a'"'"';/g' /etc/needrestart/needrestart.conf || true
+
+apt-get update -y
+apt-get install -y nfs-common amazon-efs-utils
+
+mkdir -p /mnt/shared-data
+echo "${aws_efs_file_system.enterprise_storage.id}:/ /mnt/shared-data efs _netdev,tls 0 0" >> /etc/fstab
+mount -a -t efs || mount -a
+
+systemctl restart snap.amazon-ssm-agent.amazon-ssm-agent.service
+EOF
 
   tags = { Name = "Samba4-AD-DC" }
 
