@@ -13,6 +13,9 @@ jobs:
   deploy:
     name: Terraform & Ansible Provisioning
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     steps:
       # 1. Get code from project repository
       - name: Checkout Repository
@@ -22,8 +25,7 @@ jobs:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
           aws-region: eu-central-1
 
       # 3. Setup SSH Key for Terraform and SSM Tunnel
@@ -85,3 +87,5 @@ jobs:
           # Run playbook via native SSM plugin
           cd ansible
           ansible-playbook -i inventory/inventory.ini playbook_ad.yml
+
+
