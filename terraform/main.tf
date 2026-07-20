@@ -148,7 +148,7 @@ resource "aws_subnet" "private_subnet_b" {
 
 resource "aws_subnet" "private_user_subnet_b" {
   vpc_id            = aws_vpc.enterprise_vpc.id
-  cidr_block        = "10.128.41.0/24" # 41 to kolejny wolny blok dla strefy B
+  cidr_block        = "10.128.41.0/24"
   availability_zone = "eu-central-1b"
   tags              = { Name = "Private-User-Subnet-41-B" }
 }
