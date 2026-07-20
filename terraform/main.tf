@@ -305,7 +305,6 @@ resource "aws_instance" "ad_server" {
 
   user_data = <<EOF
 #!/bin/bash
-set -e
 
 mkdir -p /etc/systemd/resolved.conf.d
 echo -e "[Resolve]\nDNS=169.254.169.253" > /etc/systemd/resolved.conf.d/temp.conf
@@ -315,18 +314,20 @@ until curl -sI https://aws.amazon.com >/dev/null; do
   sleep 5
 done
 
+systemctl restart snap.amazon-ssm-agent.amazon-ssm-agent.service
+
 export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=a
 sed -i 's/#$nrconf{restart} = '"'"'i'"'"';/$nrconf{restart} = '"'"'a'"'"';/g' /etc/needrestart/needrestart.conf || true
 
+while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 5; done
+
 apt-get update -y
-apt-get install -y nfs-common amazon-efs-utils
+apt-get install -y nfs-common amazon-efs-utils || true
 
 mkdir -p /mnt/shared-data
 echo "${aws_efs_file_system.enterprise_storage.id}:/ /mnt/shared-data efs _netdev,tls 0 0" >> /etc/fstab
-mount -a -t efs || mount -a
-
-systemctl restart snap.amazon-ssm-agent.amazon-ssm-agent.service
+mount -a -t efs || true
 EOF
 
   tags = { Name = "Samba4-AD-DC" }
