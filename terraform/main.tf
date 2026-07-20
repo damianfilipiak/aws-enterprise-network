@@ -11,6 +11,12 @@ provider "aws" {
   region = "eu-central-1"
 }
 
+variable "deploy_ad_connector" {
+  description = "MFA Flag"
+  type        = bool
+  default     = false
+}
+
 # IAM for AWS SSM
 resource "aws_iam_role" "ssm_role" {
   name = "Enterprise-SSM-Role"
@@ -530,6 +536,8 @@ data "aws_secretsmanager_secret_version" "ad_connector_pwd" {
 
 # AWS AD CONNECTOR
 resource "aws_directory_service_directory" "ad_connector" {
+  count    = var.deploy_ad_connector ? 1 : 0
+  
   name     = "ls.ege.ds"
   password = data.aws_secretsmanager_secret_version.ad_connector_pwd.secret_string
   size     = "Small"
