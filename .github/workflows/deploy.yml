@@ -21,7 +21,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 2. Login to AWS using GitHub Secrets
+      # 2. Login to AWS using GitHub Secrets (OIDC Auth)
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -42,8 +42,8 @@ jobs:
         with:
           terraform_wrapper: false
 
-      # 5. Build Infrastructure
-      - name: Terraform Init & Apply
+      # 5. Build Base Infrastructure (Stage 1 - without AD Connector)
+      - name: Terraform Init & Apply (Base Infrastructure)
         run: |
           cd terraform
           terraform init
@@ -78,7 +78,7 @@ jobs:
           echo "SSM agent never came Online after 5 minutes - failing fast."
           exit 1
 
-      # 8. Install Ansible and execute Playbook via SSM
+      # 8. Install Ansible and execute Playbook via SSM (Installs Samba and creates aws-svc account)
       - name: Install Ansible & Configure Samba AD
         run: |
           sudo /opt/pipx/venvs/ansible-core/bin/python -m pip install boto3 botocore
@@ -88,4 +88,8 @@ jobs:
           cd ansible
           ansible-playbook -i inventory/inventory.ini playbook_ad.yml
 
-
+      # 9. Build AWS AD Connector (Stage 2 - after Samba is fully operational)
+      - name: Terraform Apply (Deploy AD Connector)
+        run: |
+          cd terraform
+          terraform apply -var="deploy_ad_connector=true" -auto-approve
