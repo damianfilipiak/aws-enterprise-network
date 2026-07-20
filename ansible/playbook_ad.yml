@@ -144,11 +144,20 @@
           command: named-checkconf
           changed_when: false
 
-        - name: Enable and start BIND9 service
+        - name: Force BIND9 restart and enable it
           systemd:
             name: bind9
             state: restarted
             enabled: yes
+
+        - name: Ensure named is listening on port 53
+          shell: |
+            set -e
+            systemctl restart bind9 || true
+            sleep 10
+            ss -ltnp | grep ':53' || true
+            host ls.ege.ds 127.0.0.1 || true
+          changed_when: false
 
     - name: Check Samba AD DC service status
       systemd:

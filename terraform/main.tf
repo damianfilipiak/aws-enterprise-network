@@ -542,6 +542,24 @@ resource "aws_vpc_dhcp_options" "ad_dhcp" {
   tags = { Name = "Enterprise-AD-DHCP" }
 }
 
+# Optional: make the private-side DNS behavior explicit for the AD host and AWS Directory Service
+resource "aws_route53_resolver_endpoint" "this" {
+  count = 0
+
+  name      = "enterprise-dns-resolver"
+  direction = "OUTBOUND"
+
+  security_group_ids = [aws_security_group.private_sg.id]
+
+  ip_address {
+    subnet_id = aws_subnet.private_subnet_a.id
+  }
+
+  ip_address {
+    subnet_id = aws_subnet.private_subnet_b.id
+  }
+}
+
 resource "aws_vpc_dhcp_options_association" "ad_dhcp_assoc" {
   vpc_id          = aws_vpc.enterprise_vpc.id
   dhcp_options_id = aws_vpc_dhcp_options.ad_dhcp.id

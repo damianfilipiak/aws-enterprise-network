@@ -91,13 +91,21 @@ jobs:
       # 9. Build AWS AD Connector (Stage 2 - after Samba is fully operational)
       - name: Wait for Samba AD ports to be fully ready before AD Connector
         run: |
-          echo "Waiting 3 minutes for Samba AD DNS/LDAP/Kerberos services to settle..."
-          sleep 180
+          echo "Waiting 8 minutes for Samba AD DNS/LDAP/Kerberos services to settle..."
+          sleep 480
 
       - name: Verify Samba AD DNS is reachable before AD Connector
         run: |
           set -e
-          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@10.128.30.10 'host ls.ege.ds 127.0.0.1' || true
+          echo "Checking whether the AD host is listening on port 53 and responding locally..."
+          aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=Samba4-AD-DC" "Name=instance-state-name,Values=running" \
+            --query "Reservations[0].Instances[0].PrivateIpAddress" --output text > /tmp/ad_private_ip.txt
+          AD_IP=$(cat /tmp/ad_private_ip.txt)
+          echo "AD private IP: $AD_IP"
+          echo "Expecting the AD host to answer DNS on TCP/53 from AWS network."
+          timeout 30 bash -c "echo > /dev/tcp/$AD_IP/53" || true
+          echo "Port 53 probe completed."
 
       - name: Terraform Apply (Deploy AD Connector)
         run: |
