@@ -304,6 +304,8 @@ resource "aws_instance" "ad_server" {
               #!/bin/bash
               set -e
               
+              sleep 90
+              
               mkdir -p /etc/systemd/resolved.conf.d
               echo -e "[Resolve]\nDNS=169.254.169.253" > /etc/systemd/resolved.conf.d/temp.conf
               systemctl restart systemd-resolved
