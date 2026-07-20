@@ -274,13 +274,17 @@ resource "aws_instance" "nat_vpn_gateway" {
               iptables -t nat -A POSTROUTING -j MASQUERADE
               
               export DEBIAN_FRONTEND=noninteractive
+              export NEEDRESTART_MODE=a
+              sed -i 's/#$nrconf{restart} = '"'"'i'"'"';/$nrconf{restart} = '"'"'a'"'"';/g' /etc/needrestart/needrestart.conf || true
+              
               apt-get update -y
               echo iptables-persistent iptables-persistent/autosave_v4 boolean true | debconf-set-selections
               echo iptables-persistent iptables-persistent/autosave_v6 boolean true | debconf-set-selections
               apt-get install -y iptables-persistent
               netfilter-persistent save
-              
+
               EOF
+  
   tags = { Name = "NAT-VPN-Gateway" }
 
   depends_on = [aws_vpc_dhcp_options_association.ad_dhcp_assoc]
@@ -304,13 +308,18 @@ resource "aws_instance" "ad_server" {
               #!/bin/bash
               set -e
               
-              sleep 90
-              
               mkdir -p /etc/systemd/resolved.conf.d
               echo -e "[Resolve]\nDNS=169.254.169.253" > /etc/systemd/resolved.conf.d/temp.conf
               systemctl restart systemd-resolved
               
+              until curl -sI https://aws.amazon.com >/dev/null; do
+                sleep 5
+              done
+              
               export DEBIAN_FRONTEND=noninteractive
+              export NEEDRESTART_MODE=a
+              sed -i 's/#$nrconf{restart} = '"'"'i'"'"';/$nrconf{restart} = '"'"'a'"'"';/g' /etc/needrestart/needrestart.conf || true
+              
               apt-get update -y
               apt-get install -y nfs-common amazon-efs-utils
 
@@ -319,7 +328,6 @@ resource "aws_instance" "ad_server" {
               mount -a -t efs || mount -a
               
               systemctl restart snap.amazon-ssm-agent.amazon-ssm-agent.service
-              
               EOF
 
   tags = { Name = "Samba4-AD-DC" }
