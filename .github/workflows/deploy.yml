@@ -64,7 +64,7 @@ jobs:
             --query "Reservations[0].Instances[0].InstanceId" --output text)
 
           echo "Waiting for SSM agent on $INSTANCE_ID ..."
-          for i in $(seq 1 30); do
+          for i in $(seq 1 45); do
             STATUS=$(aws ssm describe-instance-information \
               --filters "Key=InstanceIds,Values=$INSTANCE_ID" \
               --query "InstanceInformationList[0].PingStatus" --output text 2>/dev/null || echo "None")
@@ -72,7 +72,7 @@ jobs:
               echo "SSM agent is Online."
               exit 0
             fi
-            echo "  ($i/30) status=$STATUS, retrying in 10s..."
+            echo "  ($i/45) status=$STATUS, retrying in 10s..."
             sleep 10
           done
           echo "SSM agent never came Online after 5 minutes - failing fast."
