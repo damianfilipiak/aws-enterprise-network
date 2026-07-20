@@ -71,3 +71,35 @@
         state: started
         enabled: yes
         masked: no
+    # SERVICES ACC AWS
+    - name: Get passwd for serv acc from AWS Secrets Manager
+      command: >
+        aws secretsmanager get-secret-value
+        --secret-id "enterprise/ad/connector-password"
+        --query "SecretString"
+        --output text
+        --region eu-central-1
+      register: connector_password_raw
+      changed_when: false
+      no_log: true
+
+    - name: Set var passwd
+      set_fact:
+        connector_password: "{{ connector_password_raw.stdout }}"
+      no_log: true
+
+    - name: Check if acc aws-svc is create
+      command: samba-tool user list
+      register: existing_users
+      changed_when: false
+
+    - name: Create acc aws-svc
+      command: >
+        samba-tool user create aws-svc '{{ connector_password }}' 
+        --description="AWS AD Connector Service Account"
+      when: "'aws-svc' not in existing_users.stdout"
+      no_log: true
+
+    - name: Turn-off passwd expires for aws-svc
+      command: samba-tool user setexpiry aws-svc --noexpiry
+      when: "'aws-svc' not in existing_users.stdout"

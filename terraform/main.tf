@@ -50,6 +50,14 @@ resource "aws_iam_role_policy" "ssm_s3_transfer" {
         Effect   = "Allow"
         Action   = ["s3:ListBucket"]
         Resource = aws_s3_bucket.ssm_ansible_bucket.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = "secretsmanager:GetSecretValue"
+        Resource = [
+          aws_secretsmanager_secret.ad_password_secret.arn,
+          aws_secretsmanager_secret.ad_connector_secret.arn # <-- Dodane nowe uprawnienie
+        ]
       }
     ]
   })
@@ -488,4 +496,22 @@ resource "aws_iam_role_policy_attachment" "github_actions_admin" {
 
 output "github_actions_role_arn" {
   value = aws_iam_role.github_actions_role.arn
+}
+
+# PASSWD FOR SERVICE ACC AWS AD CONNECTOR
+resource "random_password" "ad_connector_password" {
+  length           = 16
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}<>:?"
+}
+
+resource "aws_secretsmanager_secret" "ad_connector_secret" {
+  name                    = "enterprise/ad/connector-password"
+  description             = "Password for AWS AD Connector service account"
+  recovery_window_in_days = 0 
+}
+
+resource "aws_secretsmanager_secret_version" "ad_connector_version" {
+  secret_id     = aws_secretsmanager_secret.ad_connector_secret.id
+  secret_string = random_password.ad_connector_password.result
 }
