@@ -143,18 +143,22 @@
           command: named-checkconf
           changed_when: false
 
-        - name: Force BIND9 restart and enable it
+        - name: Ensure BIND9 is enabled and running
           systemd:
             name: bind9
             state: restarted
             enabled: yes
 
-        - name: Ensure named is listening on port 53
+        - name: Wait for BIND9 to bind port 53
           shell: |
             set -e
-            systemctl restart bind9 || true
-            sleep 10
-            ss -ltnp | grep ':53' || true
+            for i in $(seq 1 30); do
+              if ss -ltn | grep -q ':53 '; then
+                break
+              fi
+              sleep 2
+            done
+            ss -ltn | grep ':53 ' || true
             host ls.ege.ds 127.0.0.1 || true
           changed_when: false
 

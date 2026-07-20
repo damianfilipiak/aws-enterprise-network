@@ -25,8 +25,9 @@ The network is divided into two Availability Zones for better reliability. It us
 ## 🛣️ Roadmap (What I am building next)
 
 * [x] **DHCP Options Set:** Telling the AWS network to automatically give the AD server's IP as the main DNS to all new machines.
-* [ ] **PKI & LDAPS (Port 636):** Setting up a Root CA (Certificate Authority) to encrypt all Active Directory traffic and stop Man-in-the-Middle attacks.
-* [ ] **Client-to-Site VPN:** Setting up OpenVPN or WireGuard so remote workers can safely connect to the company network from home.
+* [ ] **PKI & LDAPS (Port 636):** Setting up a Root CA (Certificate Authority) to encrypt all Active Directory traffic and stop Man-in-Middle attacks.
+* [ ] **Client-to-Site VPN:** Setting up WireGuard or OpenVPN so remote workers can safely connect to the company network from home.
+* [ ] **Certificate-based authentication:** Using client certificates for stronger identity verification and future VPN / SSO scenarios.
 * [ ] **High Availability:** Secondary Samba AD DC replica in Availability Zone B.
 * [ ] **High Availability:** Redundant NAT Gateway for Zone B.
 ---
