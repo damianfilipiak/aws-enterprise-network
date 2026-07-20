@@ -74,7 +74,24 @@
         enabled: yes
         masked: no
 
-    - name: Wait for Samba AD DC ports to become reachable
+    - name: Check Samba AD DC service status
+      systemd:
+        name: samba-ad-dc
+        state: started
+      register: ad_dc_status
+      ignore_errors: true
+
+    - name: Wait briefly for Samba AD DC to finish startup
+      pause:
+        seconds: 60
+
+    - name: Verify that the AD DNS name resolves locally
+      command: host {{ domain_realm }} 127.0.0.1
+      register: dns_check
+      changed_when: false
+      ignore_errors: true
+
+    - name: Wait for key AD DC ports to become reachable
       wait_for:
         host: "127.0.0.1"
         port: "{{ item }}"
@@ -82,7 +99,6 @@
         timeout: 600
         state: started
       loop:
-        - 53
         - 389
         - 88
         - 464
