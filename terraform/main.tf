@@ -521,7 +521,7 @@ resource "aws_secretsmanager_secret_version" "ad_connector_version" {
   secret_string = random_password.ad_connector_password.result
 }
 
-
+/*
 # GET PASSWD AWS-SVS
 data "aws_secretsmanager_secret_version" "ad_connector_pwd" {
   secret_id  = aws_secretsmanager_secret.ad_connector_secret.id
@@ -542,3 +542,4 @@ resource "aws_directory_service_directory" "ad_connector" {
     vpc_id            = aws_vpc.enterprise_vpc.id 
   }
 }
+*/
