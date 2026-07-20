@@ -76,7 +76,7 @@
 
     - name: Wait for Samba AD DC ports to become reachable
       wait_for:
-        host: "{{ ansible_default_ipv4.address }}"
+        host: "127.0.0.1"
         port: "{{ item }}"
         delay: 5
         timeout: 600
@@ -86,6 +86,7 @@
         - 389
         - 88
         - 464
+      ignore_errors: true
 
     # SERVICES ACC AWS
     - name: Get passwd for serv acc from AWS Secrets Manager
