@@ -380,9 +380,22 @@ resource "aws_instance" "ad_server" {
 
   user_data = replace(<<EOF
 #!/bin/bash
+set -e
+
 mkdir -p /etc/systemd/resolved.conf.d
-echo -e "[Resolve]\nDNS=169.254.169.253" > /etc/systemd/resolved.conf.d/temp.conf
-systemctl restart systemd-resolved
+cat > /etc/systemd/resolved.conf.d/10-custom-dns.conf <<'RESOLVEOF'
+[Resolve]
+DNS=10.128.30.10
+DNSSEC=no
+Domains=ls.ege.ds
+RESOLVEOF
+systemctl restart systemd-resolved || true
+
+# Ensure local DNS resolution points to the AD host itself for this VPC domain
+cat > /etc/hosts <<'HOSTS'
+127.0.0.1 localhost
+10.128.30.10 dc.ls.ege.ds dc
+HOSTS
 
 for i in {1..36}; do
   if curl -sI https://aws.amazon.com >/dev/null; then break; fi

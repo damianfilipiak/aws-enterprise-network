@@ -1,1 +1,1 @@
-{"commands":["echo hello-from-ssm"]}
+{"commands":["echo == whoami ==; whoami; echo == bind9 ==; systemctl is-active bind9 || true; echo == named ==; ps -ef | grep named | grep -v grep || true; echo == sockets ==; ss -ltn | grep :53 || true; echo == local dns ==; host ls.ege.ds 127.0.0.1 || true"],"executionTimeout":["600000"]}
