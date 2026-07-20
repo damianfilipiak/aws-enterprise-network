@@ -56,7 +56,7 @@ resource "aws_iam_role_policy" "ssm_s3_transfer" {
         Action   = "secretsmanager:GetSecretValue"
         Resource = [
           aws_secretsmanager_secret.ad_password_secret.arn,
-          aws_secretsmanager_secret.ad_connector_secret.arn # <-- Dodane nowe uprawnienie
+          aws_secretsmanager_secret.ad_connector_secret.arn
         ]
       }
     ]
@@ -138,6 +138,13 @@ resource "aws_subnet" "private_subnet_b" {
   cidr_block        = "10.128.31.0/24"
   availability_zone = "eu-central-1b"
   tags              = { Name = "Private-Server-Subnet-31-B" }
+}
+
+resource "aws_subnet" "private_user_subnet_b" {
+  vpc_id            = aws_vpc.enterprise_vpc.id
+  cidr_block        = "10.128.41.0/24" # 41 to kolejny wolny blok dla strefy B
+  availability_zone = "eu-central-1b"
+  tags              = { Name = "Private-User-Subnet-41-B" }
 }
 
 # FIREWALL / SECURITY GROUPS
@@ -329,6 +336,18 @@ resource "aws_instance" "office_pc_1" {
   depends_on = [aws_vpc_dhcp_options_association.ad_dhcp_assoc]
 }
 
+resource "aws_instance" "office_pc_2" {
+  ami                    = data.aws_ami.ubuntu.id
+  instance_type          = "t3.micro"
+  subnet_id              = aws_subnet.private_user_subnet_b.id
+  vpc_security_group_ids = [aws_security_group.private_sg.id]
+  iam_instance_profile   = aws_iam_instance_profile.ssm_profile.name
+
+  tags = { Name = "Office-User-Simulator-B" }
+
+  depends_on = [aws_vpc_dhcp_options_association.ad_dhcp_assoc]
+}
+
 # ROUTING
 resource "aws_route_table" "public_rt" {
   vpc_id = aws_vpc.enterprise_vpc.id
@@ -342,6 +361,11 @@ resource "aws_route_table" "public_rt" {
 resource "aws_route_table_association" "public_rta_a" {
   subnet_id      = aws_subnet.public_subnet_a.id
   route_table_id = aws_route_table.public_rt.id
+}
+
+resource "aws_route_table_association" "private_user_rta_b" {
+  subnet_id      = aws_subnet.private_user_subnet_b.id
+  route_table_id = aws_route_table.private_rt.id
 }
 
 resource "aws_route_table_association" "public_rta_b" {
@@ -416,7 +440,6 @@ resource "aws_vpc_dhcp_options_association" "ad_dhcp_assoc" {
   dhcp_options_id = aws_vpc_dhcp_options.ad_dhcp.id
 }
 
-#
 # GENERATE PASSWORD
 resource "random_password" "ad_admin_password" {
   length           = 16
@@ -436,24 +459,6 @@ resource "aws_secretsmanager_secret_version" "ad_password_version" {
   secret_id     = aws_secretsmanager_secret.ad_password_secret.id
   secret_string = random_password.ad_admin_password.result
 }
-
-# IAM: READ 
-resource "aws_iam_role_policy" "ssm_secrets_policy" {
-  name = "ssm-secrets-access"
-  role = aws_iam_role.ssm_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect   = "Allow"
-        Action   = "secretsmanager:GetSecretValue"
-        Resource = aws_secretsmanager_secret.ad_password_secret.arn
-      }
-    ]
-  })
-}
-
 
 # OIDC FOR GITHUB
 resource "aws_iam_openid_connect_provider" "github" {
@@ -514,4 +519,26 @@ resource "aws_secretsmanager_secret" "ad_connector_secret" {
 resource "aws_secretsmanager_secret_version" "ad_connector_version" {
   secret_id     = aws_secretsmanager_secret.ad_connector_secret.id
   secret_string = random_password.ad_connector_password.result
+}
+
+
+# GET PASSWD AWS-SVS
+data "aws_secretsmanager_secret_version" "ad_connector_pwd" {
+  secret_id  = aws_secretsmanager_secret.ad_connector_secret.id
+  depends_on = [aws_secretsmanager_secret_version.ad_connector_version]
+}
+
+# AWS AD CONNECTOR
+resource "aws_directory_service_directory" "ad_connector" {
+  name     = "ls.ege.ds"
+  password = data.aws_secretsmanager_secret_version.ad_connector_pwd.secret_string
+  size     = "Small"
+  type     = "ADConnector"
+
+  connect_settings {
+    customer_dns_ips  = [aws_instance.ad_server.private_ip] 
+    customer_username = "aws-svc"
+    subnet_ids        = [aws_subnet.private_subnet_a.id, aws_subnet.private_subnet_b.id] 
+    vpc_id            = aws_vpc.enterprise_vpc.id 
+  }
 }
