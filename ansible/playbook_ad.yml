@@ -5,13 +5,6 @@
   vars:
     domain_realm: "ls.ege.ds"
     domain_netbios: "LS"
-    vault_admin_pass: !vault |
-          $ANSIBLE_VAULT;1.1;AES256
-          39323533353130303664653937373165633436616138626134636139373336303861383261643764
-          6437346339333361333765653965666332653835636464320a316563353833326430613235643765
-          33643263356132363237653363643930373430353464346333386635303066316138316235356130
-          3931653130626664340a303339373935636166323166636431623931613362613239313735373966
-          3866
 
   tasks:
     - name: Update apt and install required packages
@@ -23,6 +16,7 @@
           - libnss-winbind
           - krb5-user
           - krb5-config
+          - awscli 
         state: present
         update_cache: yes
 
@@ -30,6 +24,23 @@
       file:
         path: /etc/samba/smb.conf
         state: absent
+
+    
+    - name: Get AD passwd from AWS Secrets Manager
+      command: >
+        aws secretsmanager get-secret-value
+        --secret-id "enterprise/ad/admin-password"
+        --query "SecretString"
+        --output text
+        --region eu-central-1
+      register: ad_password_raw
+      changed_when: false
+      no_log: true  
+
+    - name: Set var with passwd
+      set_fact:
+        ad_admin_password: "{{ ad_password_raw.stdout }}"
+      no_log: true 
 
     - name: Provision domain (create new Active Directory domain)
       shell: >
@@ -39,7 +50,7 @@
         --dns-backend=SAMBA_INTERNAL 
         --realm={{ domain_realm | upper }} 
         --domain={{ domain_netbios }} 
-        --adminpass='{{ vault_admin_pass }}'
+        --adminpass='{{ ad_admin_password }}' 
       args:
         creates: /etc/samba/smb.conf
 

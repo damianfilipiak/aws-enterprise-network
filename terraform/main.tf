@@ -408,4 +408,40 @@ resource "aws_vpc_dhcp_options_association" "ad_dhcp_assoc" {
   dhcp_options_id = aws_vpc_dhcp_options.ad_dhcp.id
 }
 
-# Test Recovery
+#
+# GENERATE PASSWORD
+resource "random_password" "ad_admin_password" {
+  length           = 16
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}<>:?"
+}
+
+# VAULT AWS SECRETS MANAGER
+resource "aws_secretsmanager_secret" "ad_password_secret" {
+  name                    = "enterprise/ad/admin-password"
+  description             = "Administrator password for Samba Active Directory"
+  recovery_window_in_days = 0 
+}
+
+# PUT PASSWD IN VAULT
+resource "aws_secretsmanager_secret_version" "ad_password_version" {
+  secret_id     = aws_secretsmanager_secret.ad_password_secret.id
+  secret_string = random_password.ad_admin_password.result
+}
+
+# IAM: READ 
+resource "aws_iam_role_policy" "ssm_secrets_policy" {
+  name = "ssm-secrets-access"
+  role = aws_iam_role.ssm_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "secretsmanager:GetSecretValue"
+        Resource = aws_secretsmanager_secret.ad_password_secret.arn
+      }
+    ]
+  })
+}
