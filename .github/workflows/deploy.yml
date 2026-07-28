@@ -1,0 +1,147 @@
+name: Deploy AWS Infrastructure & Active Directory
+
+on:
+  push:
+    branches:
+      - main # Trigger pipeline automatically on git push to main
+    paths-ignore:
+      - 'README.md'
+      - '.gitignore'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Terraform & Ansible Provisioning
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      # 1. Get code from project repository
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # 2. Login to AWS using GitHub Secrets (OIDC Auth)
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
+          aws-region: eu-central-1
+
+      # 4. Install and configure Terraform
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      # 5. Build Base Infrastructure (Stage 1 - without AD Connector)
+      - name: Terraform Init & Apply (Base Infrastructure)
+        run: |
+          cd terraform
+          terraform init -reconfigure
+          terraform apply -auto-approve -lock=false
+
+      # 6. Install AWS Session Manager Plugin for Zero Trust Tunnel
+      - name: Install AWS Session Manager Plugin
+        run: |
+          curl "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb" -o "session-manager-plugin.deb"
+          sudo dpkg -i session-manager-plugin.deb
+          rm session-manager-plugin.deb
+
+      # 7. Wait for the primary AD server's SSM Agent to actually report "Online"
+      # The replica is allowed to come up later and is handled by the Ansible playbook.
+      - name: Wait for primary AD SSM Agent to report Online
+        run: |
+          set -euo pipefail
+          PRIMARY=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=Samba4-AD-DC" "Name=instance-state-name,Values=running" \
+            --query "Reservations[0].Instances[0].InstanceId" --output text)
+          echo "Waiting for SSM agent on $PRIMARY ..."
+          ready=false
+          for i in $(seq 1 45); do
+            STATUS=$(aws ssm describe-instance-information \
+              --filters "Key=InstanceIds,Values=$PRIMARY" \
+              --query "InstanceInformationList[0].PingStatus" --output text 2>/dev/null || echo "None")
+            if [ "$STATUS" = "Online" ]; then
+              echo "SSM agent is Online on $PRIMARY"
+              ready=true
+              break
+            fi
+            echo "  ($i/45) $PRIMARY status=$STATUS, retrying in 10s..."
+            sleep 10
+          done
+          if [ "$ready" != "true" ]; then
+            echo "SSM agent on $PRIMARY never became Online - failing fast."
+            exit 1
+          fi
+
+      # 8. Install Ansible and execute Playbook via SSM (Installs Samba and creates aws-svc account)
+      - name: Install Ansible & Configure Samba AD
+        run: |
+          sudo /opt/pipx/venvs/ansible-core/bin/python -m pip install boto3 botocore
+          ansible-galaxy collection install amazon.aws
+
+          # Run playbook via native SSM plugin
+          cd ansible
+          ansible-playbook -i inventory/inventory.ini playbook_ad.yml
+
+      # 9. Smoke test domain/network stack after Ansible configuration
+      - name: Smoke test AD, NAT, ECS and internal form
+        run: |
+          set -euo pipefail
+
+          PRIMARY=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=Samba4-AD-DC" "Name=instance-state-name,Values=running" \
+            --query "Reservations[0].Instances[0].InstanceId" --output text)
+
+          CMD_ID=$(aws ssm send-command \
+            --instance-ids "$PRIMARY" \
+            --document-name "AWS-RunShellScript" \
+            --comment "AD smoke test" \
+            --parameters commands='["set -e","systemctl is-active samba-ad-dc","ss -ltnup | grep -E \":53|:88|:389|:464\"","getent hosts ssm.eu-central-1.amazonaws.com | head -n 1"]' \
+            --query "Command.CommandId" --output text)
+
+          aws ssm wait command-executed --command-id "$CMD_ID" --instance-id "$PRIMARY"
+          STATUS=$(aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$PRIMARY" --query "Status" --output text)
+          echo "SSM smoke status for $PRIMARY: $STATUS"
+          [ "$STATUS" = "Success" ]
+
+          NAT_ID=$(aws ec2 describe-route-tables \
+            --filters "Name=tag:Name,Values=Private-RT" \
+            --query "RouteTables[0].Routes[?DestinationCidrBlock=='0.0.0.0/0'].NatGatewayId | [0]" \
+            --output text)
+          [ "$NAT_ID" != "None" ]
+          echo "Private route egress via NAT gateway: $NAT_ID"
+
+          OFFICE_STATUS=$(aws ecs describe-services \
+            --cluster office-sim-cluster \
+            --services office-sim-service \
+            --query "services[0].status" --output text)
+          OFFICE_RUNNING=$(aws ecs describe-services \
+            --cluster office-sim-cluster \
+            --services office-sim-service \
+            --query "services[0].runningCount" --output text)
+          OFFICE_DESIRED=$(aws ecs describe-services \
+            --cluster office-sim-cluster \
+            --services office-sim-service \
+            --query "services[0].desiredCount" --output text)
+          [ "$OFFICE_STATUS" = "ACTIVE" ]
+          [ "$OFFICE_RUNNING" = "$OFFICE_DESIRED" ]
+
+          FORM_DNS=$(cd terraform && terraform output -raw internal_form_alb_dns_name)
+          echo "Internal form ALB DNS: $FORM_DNS"
+
+          FORM_STATUS=$(aws ecs describe-services \
+            --cluster office-sim-cluster \
+            --services internal-ad-form-service \
+            --query "services[0].status" --output text)
+          FORM_RUNNING=$(aws ecs describe-services \
+            --cluster office-sim-cluster \
+            --services internal-ad-form-service \
+            --query "services[0].runningCount" --output text)
+          FORM_DESIRED=$(aws ecs describe-services \
+            --cluster office-sim-cluster \
+            --services internal-ad-form-service \
+            --query "services[0].desiredCount" --output text)
+          [ "$FORM_STATUS" = "ACTIVE" ]
+          [ "$FORM_RUNNING" = "$FORM_DESIRED" ]

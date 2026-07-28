@@ -1,0 +1,235 @@
+- name: Provision primary Samba4 AD DC and baseline AD objects
+  hosts: ad_primary
+  become: yes
+  vars:
+    domain_realm: "corp.local"
+    domain_netbios: "LS"
+    ad_primary_ip: "10.10.30.10"
+    ad_groups:
+      - GG_IT_Admins
+      - GG_HR
+      - GG_Finance
+      - GG_Operations
+    ad_users:
+      - username: "anna.kowalska"
+        given_name: "Anna"
+        surname: "Kowalska"
+        group: "GG_HR"
+      - username: "jan.nowak"
+        given_name: "Jan"
+        surname: "Nowak"
+        group: "GG_Finance"
+      - username: "piotr.wisniewski"
+        given_name: "Piotr"
+        surname: "Wisniewski"
+        group: "GG_Operations"
+
+  tasks:
+    - name: Update apt and install required packages (without BIND9)
+      apt:
+        name:
+          - samba
+          - smbclient
+          - winbind
+          - libnss-winbind
+          - krb5-user
+          - krb5-config
+          - ldb-tools
+          - awscli
+        state: present
+        update_cache: yes
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+
+    - name: Remove default smb.conf file (so AD can generate its own)
+      file:
+        path: /etc/samba/smb.conf
+        state: absent
+
+    - name: Check whether primary already has Samba AD database
+      stat:
+        path: /var/lib/samba/private/sam.ldb
+      register: primary_sam_ldb
+
+    - name: Reset local Samba AD state on primary before reprovision
+      shell: |
+        systemctl stop samba-ad-dc smbd nmbd winbind || true
+        rm -rf /var/lib/samba/*
+        rm -f /etc/krb5.keytab
+      args:
+        executable: /bin/bash
+      when: primary_sam_ldb.stat.exists
+
+    - name: Get AD passwd from AWS Secrets Manager
+      command: >
+        aws secretsmanager get-secret-value
+        --secret-id "enterprise/ad/admin-password"
+        --query "SecretString"
+        --output text
+        --region eu-central-1
+      register: ad_password_raw
+      changed_when: false
+      no_log: true  
+
+    - name: Set var with passwd
+      set_fact:
+        ad_admin_password: "{{ ad_password_raw.stdout }}"
+      no_log: true 
+
+    - name: Provision domain (create new Active Directory domain with internal DNS backend)
+      shell: >
+        samba-tool domain provision 
+        --server-role=dc 
+        --use-rfc2307 
+        --dns-backend=SAMBA_INTERNAL 
+        --realm={{ domain_realm | upper }} 
+        --domain={{ domain_netbios }} 
+        --adminpass='{{ ad_admin_password }}' 
+      args:
+        creates: /etc/samba/smb.conf
+
+    - name: Disable standard Samba services (conflict with AD DC version)
+      systemd:
+        name: "{{ item }}"
+        state: stopped
+        enabled: no
+        masked: yes
+      loop:
+        - smbd
+        - nmbd
+        - winbind
+
+    - name: Start integrated Samba AD DC service
+      systemd:
+        name: samba-ad-dc
+        state: started
+        enabled: yes
+        masked: no
+
+    - name: Check Samba AD DC service status
+      systemd:
+        name: samba-ad-dc
+        state: started
+      register: ad_dc_status
+
+    - name: Wait briefly for Samba AD DC to finish startup
+      pause:
+        seconds: 30
+
+    - name: Wait for key AD DC ports to become reachable
+      wait_for:
+        host: "127.0.0.1"
+        port: "{{ item }}"
+        delay: 5
+        timeout: 600
+        state: started
+      loop:
+        - 389
+        - 88
+        - 464
+
+    # SERVICES ACC AWS
+    - name: Get passwd for serv acc from AWS Secrets Manager
+      command: >
+        aws secretsmanager get-secret-value
+        --secret-id "enterprise/ad/connector-password"
+        --query "SecretString"
+        --output text
+        --region eu-central-1
+      register: connector_password_raw
+      changed_when: false
+      no_log: true
+
+    - name: Set var passwd
+      set_fact:
+        connector_password: "{{ connector_password_raw.stdout }}"
+      no_log: true
+
+    - name: Get default bootstrap passwd for AD demo users from AWS Secrets Manager
+      command: >
+        aws secretsmanager get-secret-value
+        --secret-id "enterprise/ad/default-user-password"
+        --query "SecretString"
+        --output text
+        --region eu-central-1
+      register: default_user_password_raw
+      changed_when: false
+      no_log: true
+
+    - name: Set default bootstrap passwd fact
+      set_fact:
+        default_user_password: "{{ default_user_password_raw.stdout }}"
+      no_log: true
+
+    - name: Check if acc aws-svc is create
+      command: samba-tool user list
+      register: existing_users
+      changed_when: false
+
+    - name: Create acc aws-svc
+      command: >
+        samba-tool user create aws-svc '{{ connector_password }}' 
+        --description="AWS AD Connector Service Account"
+      when: "'aws-svc' not in existing_users.stdout"
+      no_log: true
+
+    - name: Turn-off passwd expires for aws-svc
+      command: samba-tool user setexpiry aws-svc --noexpiry
+      when: "'aws-svc' not in existing_users.stdout"
+
+    - name: Ensure baseline AD groups exist
+      command: samba-tool group add {{ item }}
+      register: create_group_result
+      changed_when: create_group_result.rc == 0
+      failed_when: create_group_result.rc != 0 and ('already exists' not in (create_group_result.stderr | lower))
+      loop: "{{ ad_groups }}"
+
+    - name: Refresh user list after connector account setup
+      command: samba-tool user list
+      register: existing_users_after_connector
+      changed_when: false
+
+    - name: Create baseline AD users
+      command: >
+        samba-tool user create {{ item.username }} '{{ default_user_password }}'
+        --given-name='{{ item.given_name }}'
+        --surname='{{ item.surname }}'
+      register: create_user_result
+      changed_when: create_user_result.rc == 0
+      when: "item.username not in existing_users_after_connector.stdout"
+      loop: "{{ ad_users }}"
+      no_log: true
+
+    - name: Add baseline users to mapped AD groups
+      command: samba-tool group addmembers {{ item.group }} {{ item.username }}
+      register: addmember_result
+      changed_when: addmember_result.rc == 0
+      failed_when: addmember_result.rc != 0 and ('already a member' not in (addmember_result.stderr | lower))
+      loop: "{{ ad_users }}"
+
+    - name: Set baseline AD domain password policy
+      command: >
+        samba-tool domain passwordsettings set
+        --complexity=on
+        --history-length=24
+        --min-pwd-length=12
+        --min-pwd-age=1
+        --max-pwd-age=90
+      register: pwd_policy_set
+      changed_when: pwd_policy_set.rc == 0
+
+    - name: Show AD domain password policy
+      command: samba-tool domain passwordsettings show
+      register: pwd_policy_show
+      changed_when: false
+
+    - name: Verify baseline users are present
+      command: samba-tool user list
+      register: final_user_list
+      changed_when: false
+
+    - name: Verify baseline groups are present
+      command: samba-tool group list
+      register: final_group_list
+      changed_when: false
+
