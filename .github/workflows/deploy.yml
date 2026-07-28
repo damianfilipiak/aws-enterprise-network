@@ -21,12 +21,20 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 2. Login to AWS using GitHub Secrets (OIDC Auth)
+      # 2. Login to AWS using GitHub OIDC
       - name: Configure AWS Credentials
+        id: aws_creds
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
           aws-region: eu-central-1
+          audience: sts.amazonaws.com
+
+      - name: Verify AWS authentication
+        env:
+          AWS_DEFAULT_REGION: eu-central-1
+        run: |
+          aws sts get-caller-identity --output json
 
       # 4. Install and configure Terraform
       - name: Setup Terraform
@@ -34,8 +42,35 @@ jobs:
         with:
           terraform_wrapper: false
 
+      # 4.5 Check if GitHub OIDC provider and role already exist
+      - name: Check GitHub OIDC Provider & Role
+        env:
+          AWS_DEFAULT_REGION: eu-central-1
+        run: |
+          # Check for OIDC provider
+          PROVIDER_ARN=$(aws iam list-open-id-connect-providers --query 'OpenIDConnectProviderList[?contains(Arn, `token.actions.githubusercontent.com`)].Arn | [0]' --output text)
+          if [ "$PROVIDER_ARN" != "None" ] && [ -n "$PROVIDER_ARN" ]; then
+            echo "skip_github_oidc_provider_creation=true" >> "$GITHUB_ENV"
+            echo "✓ GitHub OIDC provider exists: $PROVIDER_ARN"
+          else
+            echo "skip_github_oidc_provider_creation=false" >> "$GITHUB_ENV"
+            echo "✓ GitHub OIDC provider will be created"
+          fi
+          
+          # Check for GitHub Actions role
+          if aws iam get-role --role-name GitHubActions-Terraform-Role 2>/dev/null; then
+            echo "skip_github_actions_role_creation=true" >> "$GITHUB_ENV"
+            echo "✓ GitHub Actions role (GitHubActions-Terraform-Role) already exists"
+          else
+            echo "skip_github_actions_role_creation=false" >> "$GITHUB_ENV"
+            echo "✓ GitHub Actions role will be created"
+          fi
+
       # 5. Build Base Infrastructure (Stage 1 - without AD Connector)
       - name: Terraform Init & Apply (Base Infrastructure)
+        env:
+          TF_VAR_skip_github_oidc_provider_creation: ${{ env.skip_github_oidc_provider_creation }}
+          TF_VAR_skip_github_actions_role_creation: ${{ env.skip_github_actions_role_creation }}
         run: |
           cd terraform
           terraform init -reconfigure
@@ -49,7 +84,6 @@ jobs:
           rm session-manager-plugin.deb
 
       # 7. Wait for the primary AD server's SSM Agent to actually report "Online"
-      # The replica is allowed to come up later and is handled by the Ansible playbook.
       - name: Wait for primary AD SSM Agent to report Online
         run: |
           set -euo pipefail

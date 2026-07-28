@@ -55,14 +55,36 @@ resource "aws_iam_instance_profile" "ssm_profile" {
   role = aws_iam_role.ssm_role.name
 }
 
+variable "skip_github_oidc_provider_creation" {
+  description = "Set to true if GitHub OIDC provider already exists in this AWS account"
+  type        = bool
+  default     = false
+}
+
 resource "aws_iam_openid_connect_provider" "github" {
+  count           = var.skip_github_oidc_provider_creation ? 0 : 1
   url             = "https://token.actions.githubusercontent.com"
   client_id_list  = ["sts.amazonaws.com"]
   thumbprint_list = ["1b511abead59c6ce207077c0bf0e0043b1382612", "6938fd4d98bab03faadb97b34396831e3780aea1"]
 }
 
+data "aws_iam_openid_connect_provider" "github" {
+  url = "https://token.actions.githubusercontent.com"
+}
+
+locals {
+  github_oidc_provider_arn = var.skip_github_oidc_provider_creation ? data.aws_iam_openid_connect_provider.github.arn : aws_iam_openid_connect_provider.github[0].arn
+}
+
+variable "skip_github_actions_role_creation" {
+  description = "Set to true if GitHubActions-Terraform-Role already exists in this AWS account"
+  type        = bool
+  default     = false
+}
+
 resource "aws_iam_role" "github_actions_role" {
-  name = "GitHubActions-Terraform-Role"
+  count = var.skip_github_actions_role_creation ? 0 : 1
+  name  = "GitHubActions-Terraform-Role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -71,7 +93,7 @@ resource "aws_iam_role" "github_actions_role" {
         Action = "sts:AssumeRoleWithWebIdentity"
         Effect = "Allow"
         Principal = {
-          Federated = aws_iam_openid_connect_provider.github.arn
+          Federated = local.github_oidc_provider_arn
         }
         Condition = {
           StringEquals = {
@@ -86,8 +108,17 @@ resource "aws_iam_role" "github_actions_role" {
   })
 }
 
+data "aws_iam_role" "github_actions_role" {
+  name = "GitHubActions-Terraform-Role"
+}
+
+locals {
+  github_actions_role_name = var.skip_github_actions_role_creation ? data.aws_iam_role.github_actions_role.name : aws_iam_role.github_actions_role[0].name
+  github_actions_role_arn  = var.skip_github_actions_role_creation ? data.aws_iam_role.github_actions_role.arn : aws_iam_role.github_actions_role[0].arn
+}
+
 resource "aws_iam_role_policy_attachment" "github_actions_admin" {
-  role       = aws_iam_role.github_actions_role.name
+  role       = local.github_actions_role_name
   policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
 }
 

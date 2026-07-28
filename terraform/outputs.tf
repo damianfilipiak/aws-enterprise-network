@@ -15,7 +15,7 @@ output "efs_dns_name" {
 }
 
 output "github_actions_role_arn" {
-  value = aws_iam_role.github_actions_role.arn
+  value = local.github_actions_role_arn
 }
 
 output "ecs_cluster_name" {
