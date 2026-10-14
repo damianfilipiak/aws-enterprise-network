@@ -23,7 +23,7 @@ The network is divided into two Availability Zones for better reliability. It us
 * **GitOps Pipeline:** Everything is automated. When I push code to the `main` branch, GitHub Actions automatically deploys the changes.
 
 ## ❗Security & Disclaimer
-** This repository is an educational Proof-of-Concept built in a sandbox environment. Security Group rules in `security.tf` use relaxed ingress (0.0.0.0/0) strictly for testing and network troubleshooting purpose. In a production deployment, traffic should be restricted to specific CIDRs.**
+**This repository is an educational Proof-of-Concept built in a sandbox environment. Security Group rules in `security.tf` use relaxed ingress (0.0.0.0/0) strictly for testing and network troubleshooting purpose. In a production deployment, traffic should be restricted to specific CIDRs.**
 
 ## 🛣️ Roadmap (What I am building next)
 
